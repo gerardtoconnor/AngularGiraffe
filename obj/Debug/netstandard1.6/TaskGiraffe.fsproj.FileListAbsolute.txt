@@ -1,0 +1,10 @@
+F:\OneDrive\Code\TaskGiraffe\bin\Debug\netstandard1.6\TaskGiraffe.deps.json
+F:\OneDrive\Code\TaskGiraffe\bin\Debug\netstandard1.6\TaskGiraffe.runtimeconfig.json
+F:\OneDrive\Code\TaskGiraffe\bin\Debug\netstandard1.6\TaskGiraffe.runtimeconfig.dev.json
+F:\OneDrive\Code\TaskGiraffe\bin\Debug\netstandard1.6\TaskGiraffe.dll
+F:\OneDrive\Code\TaskGiraffe\bin\Debug\netstandard1.6\TaskGiraffe.pdb
+F:\OneDrive\Code\TaskGiraffe\bin\Debug\netstandard1.6\Giraffe.dll
+F:\OneDrive\Code\TaskGiraffe\bin\Debug\netstandard1.6\Giraffe.pdb
+F:\OneDrive\Code\TaskGiraffe\obj\Debug\netstandard1.6\TaskGiraffe.fsproj.CoreCompileInputs.cache
+F:\OneDrive\Code\TaskGiraffe\obj\Debug\netstandard1.6\TaskGiraffe.dll
+F:\OneDrive\Code\TaskGiraffe\obj\Debug\netstandard1.6\TaskGiraffe.pdb
