@@ -206,13 +206,13 @@ let tSubRoute (path:string) (fn:HttpHandler) (root:Node) =
     addRoutContToPath path (SubRouteMap fn) root
 
 // parsing route that iterates down nodes, parses, and then continues down further notes if needed
-let inline tRoutef (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node)=
+let tRoutef (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node)=
     let last = path.Value.Length - 1
     let rec go i (pcount) (node:Node)  =
         if i = last then
             // have reached the end of the string match so add fn handler, and no continuation node            
-            node.RouteFn <- (MatchComplete( pcount , bindMe path fn ))
-            node
+            node.Add path.Value.[i] (MatchComplete( pcount , bindMe path fn ))
+            //node.RouteFn <- (MatchComplete( pcount , bindMe path fn ))
         else
             if path.Value.[i] = '%' && i + 1 <= last then
                 let fmtChar = path.Value.[i + 1]
@@ -223,10 +223,11 @@ let inline tRoutef (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node
                 // formater with valid key
                 else if formatStringMap.ContainsKey fmtChar then
 
-                    if i + 1 = last then // if at the end of the parse
+                    if i + 1 = last then // if finishes in a parse
                         node.RouteFn <- ApplyMatchAndComplete( fmtChar , pcount + 1 , bindMe path fn )
                         node
                     else
+                        //otherwise add mid pattern parse apply
                         let newNodeBranch =
                             match node.RouteFn with
                             | ApplyMatch (_,_,n) -> n 
@@ -239,6 +240,7 @@ let inline tRoutef (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node
                     node.Add path.Value.[i] EmptyMap
                     |> go (i + 1) pcount
             else
+                //normal string match path/chain
                 node.Add path.Value.[i] EmptyMap
                 |> go (i + 1) pcount
     go 0 0 root 
@@ -276,10 +278,10 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
     let rec getNodeCompletion (c:char) pos (node:Node) =
         match path.IndexOf(c,pos) with
         | -1 -> None
-        | x1 -> 
+        | x1 -> //x1 represents position of match close char but rest of chain must be confirmed 
             match checkMatchSubPath x1 node with
             | x2,Some cn -> Some(x1 - 1,x2,cn)                 // from where char found to end of node chain complete
-            | x2,None   ->  getNodeCompletion c x2 node // char foundpart of match, not completion string
+            | x2,None   ->  getNodeCompletion c (x1 + 1) node // char foundpart of match, not completion string
 
     let createResult (args:obj list) (argCount:int) (fn:obj -> HttpHandler) : Task<HttpContext> =
         let input =  
@@ -329,7 +331,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
             match formatStringMap.[f] path pos fpos with
             | Some o -> 
                 match cnode.RouteFn with
-                | ApplyMatch (f2,c2,n2) -> applyMatch (f2,c2,n2) npos cnode (o :: acc)
+                | ApplyMatch (f2,c2,n2) -> applyMatch (f2,c2,n2) npos n2 (o :: acc)
                 | x -> matchFinalNodeFn x npos (o :: acc)
             | None -> fail ctx
             
