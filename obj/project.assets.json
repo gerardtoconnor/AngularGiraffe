@@ -3004,7 +3004,7 @@
           "ref/netstandard1.5/System.Runtime.dll": {}
         }
       },
-      "System.Runtime.CompilerServices.Unsafe/4.4.0-preview1-25305-02": {
+      "System.Runtime.CompilerServices.Unsafe/4.4.0-preview1-25219-04": {
         "type": "package",
         "dependencies": {
           "NETStandard.Library": "1.6.1"
@@ -8427,10 +8427,10 @@
         "system.runtime.nuspec"
       ]
     },
-    "System.Runtime.CompilerServices.Unsafe/4.4.0-preview1-25305-02": {
-      "sha512": "keqowXVd5U8XgkRrZwiA4YCCW4TiuRyjl3Yld+12MW4tBXenjVEAiEyMxI/OnrHKUwvF7IKVE9DjHG+rBg5abg==",
+    "System.Runtime.CompilerServices.Unsafe/4.4.0-preview1-25219-04": {
+      "sha512": "Rm73atJzJIw01CXo1plNF+/IQSb98FD4S5VBNWzWdTdoMaNj2cE0n+U6JfryMYoTNPC6Eks4pRm9MIPZJod3Jw==",
       "type": "package",
-      "path": "system.runtime.compilerservices.unsafe/4.4.0-preview1-25305-02",
+      "path": "system.runtime.compilerservices.unsafe/4.4.0-preview1-25219-04",
       "files": [
         "ThirdPartyNotices.txt",
         "dotnet_library_license.txt",
@@ -8440,7 +8440,7 @@
         "lib/netstandard2.0/System.Runtime.CompilerServices.Unsafe.xml",
         "ref/netstandard1.0/System.Runtime.CompilerServices.Unsafe.dll",
         "ref/netstandard2.0/System.Runtime.CompilerServices.Unsafe.dll",
-        "system.runtime.compilerservices.unsafe.4.4.0-preview1-25305-02.nupkg.sha512",
+        "system.runtime.compilerservices.unsafe.4.4.0-preview1-25219-04.nupkg.sha512",
         "system.runtime.compilerservices.unsafe.nuspec",
         "useSharedDesignerContext.txt",
         "version.txt"
@@ -10109,17 +10109,14 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Code\\AngularGiraffe\\TaskGiraffe.fsproj",
-      "projectName": "TaskGiraffe",
-      "projectPath": "C:\\Code\\AngularGiraffe\\TaskGiraffe.fsproj",
+      "projectUniqueName": "C:\\Code\\AngularGiraffe\\AngularGiraffe.fsproj",
+      "projectName": "AngularGiraffe",
+      "projectPath": "C:\\Code\\AngularGiraffe\\AngularGiraffe.fsproj",
       "outputPath": "C:\\Code\\AngularGiraffe\\obj\\",
       "projectStyle": "PackageReference",
       "originalTargetFrameworks": [
         "netcoreapp1.1"
       ],
-      "files": {
-        "lib/netcoreapp1.1/TaskGiraffe.dll": "C:\\Code\\AngularGiraffe\\bin\\placeholder\\netcoreapp1.1\\TaskGiraffe.dll"
-      },
       "frameworks": {
         "netcoreapp1.1": {
           "projectReferences": {}

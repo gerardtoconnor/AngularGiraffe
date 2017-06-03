@@ -70,6 +70,14 @@ let webApi : HttpHandler =
             routeTrie [
                 tRoute "/" <| text "Hello world, from Giraffe!"
                 tRoute "/test" <| text "Giraffe testing working"
+                tSubRoute "/deep" ==> 
+                    routeTrie [
+                        tRoute "/hasktag" ==> text "hashtag deep"
+                        tRoute "/solo" ==> text "han Solo"
+                        tRoutef "/map/%s" text
+                        tRoutef "/rev/%s/end" text
+//                        tRoutef "/rev/%s/end/%s" (fun (v1,v2) -> sprintf "double whammy baby, [%s] as well as [%s]" v1 v2 |> text)                      
+                ]
                 tRoute "/auth" ( AuthTestHandler >=> text "your Authorised" )
                 tRoute "/SampleData/WeatherForecasts" <| json (weatherForecasts ())
                 tRoutef "/value/%s/cats/%s/end" (fun (v1,v2) -> sprintf "we recieved in [%s] and [%s]" v1 v2 |> text)

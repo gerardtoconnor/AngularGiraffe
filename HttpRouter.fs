@@ -119,9 +119,6 @@ let formatStringMap =
         'f', (floatParse )  // float
     ]
 
-
-
-
 // implimenation of (router) Trie Node
 // assumptions: memory and compile time not relevant, all about execution speed, initially testing with Dictionary edges
 
@@ -132,29 +129,20 @@ type Node(iRouteFn:RouteCont) =
     member x.Add v routeFn =
         match edges.TryGetValue v with
         | true, node -> 
-            x.RouteFn <-
                 //   ( current ),( new )
-                match x.RouteFn with
-                | EmptyMap -> routeFn
-                // | MultiMatch ls -> routeFn :: ls |> List.sortBy (fun v -> v.Precedent) |> MultiMatch
-                // | x -> [routeFn ; x ] |> List.sortBy (fun v -> v.Precedent) |> MultiMatch
-                | x -> routeFn
+            match routeFn with
+            | EmptyMap -> ()
+            | y -> node.RouteFn <- y
+            // | MultiMatch ls -> routeFn :: ls |> List.sortBy (fun v -> v.Precedent) |> MultiMatch
+            // | x -> [routeFn ; x ] |> List.sortBy (fun v -> v.Precedent) |> MultiMatch
+            //| _, y -> y // TEMPORARY MATCH SCHEME
             node
         | false, _ -> 
             let node = Node(routeFn)
             edges.Add(v,node)
             if not hasEdges then hasEdges <- true //quick field to check if node has edges
             node
-    
-// | EmptyMap
-// | HandlerMap of HttpHandler
-// | SubRouteMap of HttpHandler
-// | MultiMatch of RouteCont<'T> list
-// | ApplyMatch of ( char * char * (Node) ) // (parser , nextChar , contNode) 
-// | MatchComplete of ( (int) * ('T -> HttpHandler) ) // ( No# Parsers, Cont) 
-// | ApplyMatchAndComplete
-
-
+            
     member x.EdgeCount 
         with get () = edges.Count
     
@@ -185,7 +173,7 @@ and RouteCont =
             | ApplyMatch _ -> 3
             | ApplyMatchAndComplete _ -> 4
             | MatchComplete _ -> 5
-            | EmptyMap -> 0
+            | EmptyMap -> 6
 ////////////////////////////////////////////////////
 // Node Trie using node mapping functions
 ////////////////////////////////////////////////////
@@ -223,11 +211,12 @@ let inline tRoutef (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node
     let rec go i (pcount) (node:Node)  =
         if i = last then
             // have reached the end of the string match so add fn handler, and no continuation node            
-            node.Add path.Value.[i] (MatchComplete( pcount , bindMe path fn ))
+            node.RouteFn <- (MatchComplete( pcount , bindMe path fn ))
+            node
         else
             if path.Value.[i] = '%' && i + 1 <= last then
                 let fmtChar = path.Value.[i + 1]
-                // overrided % case
+                // overrided %% -> % case
                 if fmtChar = '%' then
                     node.Add '%' EmptyMap
                     |> go (i + 2) pcount
@@ -237,8 +226,11 @@ let inline tRoutef (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node
                     if i + 1 = last then // if at the end of the parse
                         node.RouteFn <- ApplyMatchAndComplete( fmtChar , pcount + 1 , bindMe path fn )
                         node
-                    else 
-                        let newNodeBranch = Node(EmptyMap)
+                    else
+                        let newNodeBranch =
+                            match node.RouteFn with
+                            | ApplyMatch (_,_,n) -> n 
+                            | x -> Node(EmptyMap)
                         node.RouteFn <- ApplyMatch( fmtChar ,path.Value.[i+2], newNodeBranch ) // need to insert Parser on this current node before match string part
                         go (i + 2) (pcount + 1) newNodeBranch 
                 // badly formated format string that has unknown char after %
@@ -292,6 +284,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
     let createResult (args:obj list) (argCount:int) (fn:obj -> HttpHandler) : Task<HttpContext> =
         let input =  
             match argCount with
+            | 0 -> Unchecked.defaultof<obj> //HACK: need routeF to throw error on zero args
             | 1 -> args.Head // HACK: look into performant way to safely extract
             | _ ->
                 let values = Array.zeroCreate<obj>(argCount)
@@ -323,7 +316,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
             fn succ fail ctx // run function with all parameters
         | ApplyMatch _ -> fail ctx // the chain didnt end with a handler (in error) so fail
         | MatchComplete (i,fn) ->  
-            createResult [] i fn // a chain with parses, ending in string has ended and can now be applied 
+            createResult acc i fn // a chain with parses, ending in string has ended and can now be applied 
         | ApplyMatchAndComplete ( f,i,fn ) -> // a chain with parsers (optional) ends with pattern match also
             match formatStringMap.[f] path pos last with
             | Some o -> 
