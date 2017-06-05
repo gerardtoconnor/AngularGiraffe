@@ -20,13 +20,13 @@ open Giraffe.AsyncTask
 
 let webApp = 
     routeTrie [
-        tSubRoute "/api" ==> WebApi.webApi
-        tRoute "/plainroute" ==> text "plain route hit"
-        tRoutef "/dist/%s" (fun path -> text path )
-        tRoute "/__webpack_hmr" ==> (fun succ fail ctx -> succ ctx)
-        tRoute "/" ==> PreRender.renderIndex
-        tRoutef "/multiRoute/%s" text 
-        tRoutef "/v/%s" (fun s -> PreRender.renderRoute s)
+        subRouteT "/api" ==> WebApi.trieApi
+        routeT "/plainroute" ==> text "plain route hit"
+        routeTf "/dist/%s" (fun path -> text path )
+        routeT "/__webpack_hmr" ==> (fun succ fail ctx -> succ ctx)
+        routeT "/" ==> PreRender.renderIndex
+        routeTf "/multiRoute/%s" text 
+        routeTf "/v/%s" (fun s -> PreRender.renderRoute s)
         //setStatusCode 404 >=> text "Not Found xxx" 
     ]
 
