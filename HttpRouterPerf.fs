@@ -41,20 +41,20 @@ let modmatch (ca: char []) =
 
 //this is a model for further performant router that uses struct nodes
 type CrawlerState =
-| FullScan = 0y
-| MidMatching = 1y
-| ChildNodeMatchScan = 2y
-| FinalMatchedCloseout = 3y
-| EndPathCompleteMatch = 4y
-| EndPathEndMatcingCompleteMatch = 5y
+| FullScan = 0uy
+| MidMatching = 1uy
+| ChildNodeMatchScan = 2uy
+| FinalMatchedCloseout = 3uy
+| EndPathCompleteMatch = 4uy
+| EndPathEndMatcingCompleteMatch = 5uy
 
 type INodeType =
-| UnInit = 0y
-| EmptyNode = 1y
-| HandlerFn = 2y
-| SubRouteFn = 3y
-| ApplyMatchFn = 4y
-| MatchCompleteFn = 5y
+| UnInit = 0uy
+| EmptyNode = 1uy
+| HandlerFn = 2uy
+| SubRouteFn = 3uy
+| ApplyMatchFn = 4uy
+| MatchCompleteFn = 5uy
 // performance Node Trie
 
 type MidMatcher =
@@ -74,8 +74,9 @@ and EndCompleter =
         val ArgCount : int
         val MapRouteFn : (obj -> HttpHandler)
     end
-and TNode =
-        val UBound : int
+[<Struct>]
+type TNode =
+        val UBound : int 
         val LBound : int
         val Mod : int
         val Token : string       
@@ -159,6 +160,7 @@ let testAry = [|'i';'t';'b';'q';|]
 let node = TNode(testAry,INodeType.EmptyNode)
 node.Edges.[0] <- Unchecked.defaultof<TNode>
 node.Token <- "imToken"
+
 let result = modmatch testAry
 
 let paths = [|

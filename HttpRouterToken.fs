@@ -101,11 +101,14 @@ type Bindy() =
 
 let inline bindMe (sf:StringFormat<'U,'T>) (fn : 'T -> HttpHandler) = 
     let b = Bindy()
-    b.EatMe<'U,'T> sf fn 
+    b.EatMe<'U,'T> sf fn
 
+// temporary compose out handler to allow composition out of route functions, same as wraping in () or using <|
 let inline (==>) (a:HttpHandler -> Node -> Node) (b:HttpHandler) = a b
 
+/// Tail Clip: 
 let inline (-|) (str:string) (close:int) = str.Substring(close,str.Length - close)
+
 let private addRoutContToPath (path:string) i j (rc:ContType)  (root:Node) =     
     let last = path.Length - 1 
     
@@ -206,7 +209,7 @@ let routeTf (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node)=
                 // formater with valid key
                 else if formatStringMap.ContainsKey fmtChar then
 
-                    if i + 1 = last then // if finishes in a parse
+                    if pl + 1 = last then // if finishes in a parse
                         if node.MidFns |> List.exists (function | ApplyMatchAndComplete(c,_,_) -> fmtChar = c | _ -> false )
                         then sprintf "duplicate paths detected '%s', Trie Build skipping..." path.Value |> failwith
                         else node.AddMidFn <| ApplyMatchAndComplete( fmtChar , pcount + 1 , bindMe path fn )
