@@ -17,7 +17,7 @@ type RouteState(path:string) =
 
 let private stringParse (path:string) ipos fpos = path.Substring(ipos,fpos - ipos + 1) |> box |> Some
 
-let private  charParse (path:string) ipos fpos = path.[ipos] |> box |> Some // this is not ideal method (but uncommonly used)
+let private  charParse (path:string) ipos _ = path.[ipos] |> box |> Some // this is not ideal method (but uncommonly used)
 
 let private boolParse (path:string) ipos fpos =
     if intIn (fpos - ipos) 4 5 then 

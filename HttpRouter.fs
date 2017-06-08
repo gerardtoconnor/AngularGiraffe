@@ -89,7 +89,7 @@ and ContType =
 // Helper Functions
 ////////////////////////////////////////////////////
 
-// Bindy is a hack to encapsulate type inferance application in node trie of multiple types, partially applied functions fail
+// Bindy is a HACK to encapsulate type inferance application in node trie of multiple types, partially applied functions fail
 type Bindy() =
     member x.EatMe<'U,'T> (sf:StringFormat<'U,'T>) (fn : 'T -> HttpHandler) (v2:obj) = v2 :?> 'T |> fn
 
@@ -137,6 +137,7 @@ let getPostMatchNode fmt (nxt:char) (ils:MidCont list) =
                 else go tfns (hfn::acc) no
             | _ -> go tfns (hfn::acc) no
     go ils [] None
+
 ////////////////////////////////////////////////////
 // Routing Node Map Functions used to build trie
 ////////////////////////////////////////////////////
