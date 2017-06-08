@@ -99,6 +99,24 @@ let inline bindMe (sf:StringFormat<'U,'T>) (fn : 'T -> HttpHandler) =
 
 let inline (==>) (a:HttpHandler -> Node -> Node) (b:HttpHandler) = a b
 
+type HandlerResult =
+| None
+| Some
+
+type RouteNodeFn() =
+    let mutable p = ""
+    let mutable bindFn = Unchecked.defaultof<obj -> HttpHandler>
+    let mutable handle = Unchecked.defaultof<HttpHandler>
+    member __.AddPathRoute (path:string) = p <- path
+    member __.AddParseHandler<'U,'T> (sf:StringFormat<'U,'T>) (fn : 'T -> HttpHandler) =
+        bindFn <- fun (v2:obj) -> v2 :?> 'T |> fn
+    member __.AddHandler (handler:HttpHandler) = handle <- handler
+    static member (>=>) (n:RouteNodeFn) (h:HttpHandler) =
+        n.AddHandler h
+    static member (>=>) (n:RouteNodeFn) (ph:'T -> HttpHandler) =
+        n.AddParseHandler<_,'T>  (ph:'T -> HttpHandler)
+
+//////////////////////
 let private addRoutContToPath (path:string) (rc:ContType)  (root:Node) =     
     let last = path.Length - 1 
     let rec go i (node:Node) =
