@@ -7,6 +7,8 @@ let inline int64In x l u = (x - l) * (u - x) >= 0L
 
 let inline floatIn x l u = (x - l) * (u - x) >= 0.
 
+let inline byteIn x l u = (x - l) * (u - x) >= 0uy
+
 let routerKey = "router_pos"
 
 type RouteState(path:string) =
@@ -65,7 +67,9 @@ let private int64Parse (path:string) ipos fpos =
     | '+' -> go (ipos + 1)
     | _ -> go (ipos)
 
-let decPower = [|1.;10.;100.;1000.;10000.;100000.;1000000.;10000000.;100000000.;100000000.|] |> Array.map (fun d -> 1. / d) // precompute inverse once at compile time
+
+let decPower = [|1.;10.;100.;1000.;10000.;100000.;1000000.;10000000.;100000000.;100000000.|] 
+let decDivide = [|1.;10.;100.;1000.;10000.;100000.;1000000.;10000000.;100000000.;100000000.|] |> Array.map (fun d -> 1. / d) // precompute inverse once at compile time
     
 let floatParse (path:string) ipos fpos =
     let mutable result = 0.
@@ -82,7 +86,8 @@ let floatParse (path:string) ipos fpos =
                 if decPlaces = 0 then 
                     result <- (result * 10.) + charDiff
                 else
-                    result <- result + ( charDiff * decPower.[decPlaces]) // char is divided using multiplication of pre-computed divisors
+                    //result <- result + charDiff 
+                    result <- result + ( charDiff * decDivide.[decPlaces]) // char is divided using multiplication of pre-computed divisors
                     decPlaces <- decPlaces + 1
                 if pos = fpos || decPlaces > 9 then
                     if negNumber then - result else result 
@@ -96,6 +101,40 @@ let floatParse (path:string) ipos fpos =
     | '+' -> go (ipos + 1)
     | _ -> go (ipos)
 
+let floatParse2 (path:string) ipos fpos =
+    let mutable result = 0.
+    let mutable nominator = 0L
+    let mutable demoninator = 0L
+    let mutable decPlaces = 0
+    let mutable negNumber = false
+    
+    let rec go pos =
+        if path.[pos] = '.' then
+            decPlaces <- 1
+            if pos < fpos then go (pos + 1) else None
+        else
+            let charDiff = int path.[pos] - int '0'
+            if intIn charDiff 0 9 then
+                if decPlaces = 0 then 
+                    nominator <- (nominator * 10L) + int64 charDiff
+                else
+                    //result <- result + charDiff 
+                    demoninator <- (demoninator * 10L) + int64 charDiff 
+                    //result <- result + ( charDiff * decPower.[decPlaces]) // char is divided using multiplication of pre-computed divisors
+                    decPlaces <- decPlaces + 1
+                if pos = fpos || decPlaces > 9 then
+                    (float nominator) + (float demoninator) * (decPower.[decPlaces]) * if negNumber then - 1. else 1. 
+                    |> box |> Some 
+                else go (pos + 1)   // continue iter
+            else None   // Invalid Character in path
+
+    //Start Parse taking into account sign operator
+    match path.[ipos] with
+    | '-' -> negNumber <- true ; go (ipos + 1)
+    | '+' -> go (ipos + 1)
+    | _ -> go (ipos)
+
+
 let formatStringMap =
     dict [
     // Char    Range Parser
@@ -107,3 +146,7 @@ let formatStringMap =
         'd', (int64Parse )  // int64
         'f', (floatParse )  // float
     ]
+
+// match floatParse2 "123.0123456789" 0 11 with
+// | Some f -> printfn ">>> %.10f" (f :?> float)
+// | None -> ()
