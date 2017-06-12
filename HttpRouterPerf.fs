@@ -209,3 +209,25 @@ let work =
     paths
     |> Array.map 
         (fun path -> path.ToCharArray() |> List.ofArray)
+
+[<Struct>]
+type AryNode =
+    val Char : byte
+    val Hop : int16
+    val Instr : byte
+    new (char,hop,instr) = { Char=char ; Hop=hop ; Instr=instr }
+
+let runPath (path:string) (nodes:AryNode []) (fns:Dictionary<int,string>) =
+    let rec go p n rt =
+        if (byte path.[p]) = nodes.[n].Char then
+            match nodes.[n].Instr with
+            | 255uy ->  
+                Some(fns.[n])
+            | nrt ->
+                go (p + 1) (int nodes.[n].Hop) nrt
+        else
+            if rt > 0uy then
+                go (p + 1) (n + 1) (rt - 1uy)
+            else
+                None
+    go 0 0 0uy
