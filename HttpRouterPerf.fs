@@ -227,7 +227,7 @@ let runPath (path:string) (nodes:AryNode []) (fns:Dictionary<int,string>) =
                 go (p + 1) (int nodes.[n].Hop) nrt
         else
             if rt > 0uy then
-                go (p + 1) (n + 1) (rt - 1uy)
+                go (p + 1) (int nodes.[n].Hop) (rt - 1uy)
             else
                 None
     go 0 0 0uy
