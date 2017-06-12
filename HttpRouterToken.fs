@@ -36,14 +36,18 @@ type PathMatch =
 | TokenInPath
 | ZeroToken
 | ZeroMatch
+| FullMatch
 
 let getPathMatch (path:string) (token:string) =
     if token.Length = 0 then ZeroToken
     else
         let cp = commonPath path token
+        let tokenMatch = cp = token.Length
+        let pathMatch = cp = path.Length
         if cp = 0 then ZeroMatch
-        elif cp = token.Length then TokenInPath
-        elif cp = path.Length  then PathInToken
+        elif tokenMatch && pathMatch then FullMatch
+        elif tokenMatch then TokenInPath
+        elif pathMatch  then PathInToken
         else SubMatch cp
 
 type Node(token:string) = 
@@ -53,78 +57,52 @@ type Node(token:string) =
     
     let addMidFn (mfn:MidCont) = midFns <- mfn :: midFns |> List.sortBy (fun f -> f.Precedence)
     let addEndFn (efn:EndCont) = endFns <- efn :: endFns |> List.sortBy (fun f -> f.Precedence) 
+    
     let addRouteFn fn (node:Node) =
         match fn with
         | Empty -> ()
         | Mid mfn -> addMidFn mfn
         | End efn -> addEndFn efn
     //do addRouteFn routeFn
-    let mutable hasEdges = false //quick field to check if node has edges
-    let edges = Dictionary<char,Node>()   
-    let rec nodeUpdate (path:string) (rc:ContType) (node:Node) =
-        // if node empty/root
-        if node.Token = "" then
-            node.Token <- path
-            addRouteFn rc node
-            node
-        // if tokens match, add to existing handlers            
-        elif path = node.Token then
-          addRouteFn rc node
-        // if path extends beyond current token
-        elif path.StartsWith node.Token then
-            let rem = path -| (node.Token.Length)
-            match node.TryGetValue rem.[0] with
-            | true, cnode ->
-                nodeUpdate rem rc cnode
-            | fales, _    ->
-                let nnode = Node(rem)
-                addRouteFn rc nnode
-                nnode
-        // need to split existing node out
-        elif node.Token.StartsWith path then
-            // need to split existing node out
-            let sedges = node.Edges //get ref to pass to split node
-            node.Edges <- Dictionary<_,_>() //wipte edges
-            let snode = node.Add (node.Token -| path.Length) Empty // create split node
-            node.Token <- path
-            snode.Edges <- sedges
-            //copy over existing functions
-            snode.MidFns <- node.MidFns
-            snode.EndFns <- node.EndFns
-            //clear functions from existing node 
-            node.MidFns <- List.empty
-            node.EndFns <- List.empty
-            addRouteFn rc node
-        else
-                        
-
-            match node.TryGetValue path.[i] with
-            | true, cn ->
-                nodeUpdate i 0 cn
-            | false, _ ->
-                nodeUpdate i 0 (Node (path -| i)
-
-
-
-    let addEdge (token:string) routeFn =
-        match edges.TryGetValue token.[0] with
-        | true, node -> 
-            match routeFn with
-            | Empty -> ()
-            | Mid mfn -> node.AddMidFn mfn
-            | End efn -> node.AddEndFn efn
-            node
-        | false, _ -> 
-            let node = Node(token)
-            match routeFn with
-            | Empty -> ()
-            | Mid mfn -> node.AddMidFn mfn
-            | End efn -> node.AddEndFn efn
-            edges.Add(token.[0],node)
-            if not hasEdges then hasEdges <- true //quick field to check if node has edges
-            node
-
+    //let mutable hasEdges = false //quick field to check if node has edges
+    let edges = Dictionary<char,Node>()
     
+    let splitNode (node:Node) (pos:int) =
+        // need to split existing node out
+        let sedges = node.Edges //get ref to pass to split node
+        let baseToken = node.Token.Substring(0,pos) //new start base token
+        let childToken = (node.Token -| pos)
+        let snode = Node(childToken)
+        node.Edges.Add(childToken.[0],snode)
+        //node.Add childToken Empty // create split node
+        node.Token <- baseToken
+        snode.Edges <- sedges
+        node.Edges <- Dictionary<_,_>() //wipe edges from node
+        //copy over existing functions
+        snode.MidFns <- node.MidFns
+        snode.EndFns <- node.EndFns
+        //clear functions from existing node 
+        node.MidFns <- List.empty
+        node.EndFns <- List.empty
+
+    // let addEdge (token:string) routeFn =
+    //     match edges.TryGetValue token.[0] with
+    //     | true, node -> 
+    //         match routeFn with
+    //         | Empty -> ()
+    //         | Mid mfn -> node.AddMidFn mfn
+    //         | End efn -> node.AddEndFn efn
+    //         node
+    //     | false, _ -> 
+    //         let node = Node(token)
+    //         match routeFn with
+    //         | Empty -> ()
+    //         | Mid mfn -> node.AddMidFn mfn
+    //         | End efn -> node.AddEndFn efn
+    //         edges.Add(token.[0],node)
+    //         if not hasEdges then hasEdges <- true //quick field to check if node has edges
+    //         node
+
     member val Edges = edges with get,set        
     member val Token = token with get,set
     
@@ -132,18 +110,45 @@ type Node(token:string) =
         with get() = midFns 
         and set v = midFns <- v
     member __.AddMidFn = addMidFn
+
     member __.EndFns 
         with get()  = endFns 
         and set v = endFns <- v 
     member __.AddEndFn = addEndFn
-    
-    member x.Add (token:string) routeFn =
-        xxx            
+               
     member x.EdgeCount 
         with get () = edges.Count
     member x.GetEdgeKeys = edges.Keys
     member x.TryGetValue v = edges.TryGetValue v
 
+    static member rec AddPath (node:Node) (path:string) (rc:ContType) =
+        match getPathMatch path node.Token with
+        | ZeroToken ->
+            // if node empty/root
+            node.Token <- path
+            addRouteFn rc node
+        | ZeroMatch ->
+            failwith "path passed to node with non-matching start in error"
+        | FullMatch -> addRouteFn rc node
+        | PathInToken ->
+            splitNode node (path.Length)
+            addRouteFn rc node
+        | TokenInPath ->
+            //path extends beyond this node
+            let rem = path -| (node.Token.Length)
+            match node.TryGetValue rem.[0] with
+            | true, cnode ->
+                AddPath cnode rem rc // recursive path scan
+            | fales, _    ->
+                let nnode = Node(rem)
+                addRouteFn rc nnode
+        | SubMatch (i) ->
+            splitNode node (i)
+            let rem = path -| i
+            let nnode = Node(rem)
+            node.Edges.Add(rem.[0],nnode)
+            addRouteFn rc nnode
+                        
 // Route Continuation Functions    
 and MidCont =
 | SubRouteMap of HttpHandler
@@ -184,49 +189,6 @@ let inline bindMe (sf:StringFormat<'U,'T>) (fn : 'T -> HttpHandler) =
 // temporary compose out handler to allow composition out of route functions, same as wraping in () or using <|
 let inline (==>) (a:HttpHandler -> Node -> Node) (b:HttpHandler) = a b
 
-
-let private addRoutContToPath (path:string) i j (rc:ContType)  (root:Node) =     
-    let last = path.Length - 1 
-    
-    let rec nodeUpdate i j (node:Node) =
-        if node.Token = "" then 
-            node.Token <- path.Substring(i,path.Length - i)
-            match rc with
-            | Empty -> ()
-            | Mid mfn -> node.AddMidFn mfn
-            | End efn -> node.AddEndFn efn
-            node
-        else
-            if i > last then  //<< existing endpoint so add function
-                match rc with
-                | Empty -> ()
-                | Mid mfn -> node.AddMidFn mfn
-                | End efn -> node.AddEndFn efn
-                node
-            else
-                if path.[i] = node.Token.[j] then
-                    nodeUpdate (i+1) (i+j) node
-                else
-                    if node.Token.Length > j + 1 then
-                        // need to split existing node out
-                        let snode = node.Add (node.Token -| j) Empty
-                        //copy over existing functions
-                        snode.MidFns <- node.MidFns
-                        snode.EndFns <- node.EndFns
-                        //clear functions from existing node 
-                        node.MidFns <- List.empty
-                        node.EndFns <- List.empty
-                        
-                        let nnode = node.Add (path.Substring(i,path.Length - i)) rc
-                        nnode
-                    else
-                        match node.TryGetValue path.[i] with
-                        | true, cn ->
-                            nodeUpdate i 0 cn
-                        | false, _ ->
-                            nodeUpdate i 0 (Node (path -| i)
-    nodeUpdate i j root                   
-
 let addCharArray (c:char) (ary:char []) =
     if ary |> Array.exists (fun v -> v = c) then
         ary
@@ -261,10 +223,10 @@ let getPostMatchNode fmt (nxt:char) (ils:MidCont list) =
 
 // Simple route that iterates down nodes and if function found, execute as normal
 let routeT (path:string) (fn:HttpHandler) (root:Node) = 
-    addRoutContToPath path 0 0 (fn |> HandlerMap |> End) root
+    Node.AddPath root path (fn |> HandlerMap |> End)
 
 let subRouteT (path:string) (fn:HttpHandler) (root:Node) =
-    addRoutContToPath path (fn |> SubRouteMap |> Mid) root
+    Node.AddPath root path (fn |> SubRouteMap |> Mid)  
 
 // parsing route that iterates down nodes, parses, and then continues down further notes if needed
 let routeTf (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node)=
