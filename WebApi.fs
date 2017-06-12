@@ -11,7 +11,8 @@ open Giraffe.HttpHandlers
 open Test.HttpRouter
 open Giraffe.Middleware
 open Giraffe.Common
-open Giraffe.AsyncTask
+open Giraffe.ValueTask
+//open Giraffe.AsyncTask
 
 
 let AuthTestHandler : HttpHandler =
@@ -164,7 +165,7 @@ let trieApi : HttpHandler =
                     routeT "/operations" ==> text "executive operations"
                     routeT "/mis" ==> text "executive mis"
                     routeTf "/area/%s" (sprintf "executive area %s" >> text)
-                    routeTf "/area/%s/district/%s/costcode%i" (fun (a,d,c) -> sprintf "executive area %s district %s costcode %s"  a d c |> text)
+                    routeTf "/area/%s/district/%s/costcode%i" (fun (a,d,c) -> sprintf "executive area %s district %s costcode %i"  a d c |> text)
                  ]
             ]
         ]

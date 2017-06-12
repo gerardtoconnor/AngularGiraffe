@@ -7,7 +7,8 @@ open Microsoft.Extensions.Primitives
 open FSharp.Core.Printf
 open System.Collections.Generic
 open Microsoft.FSharp.Reflection
-open Giraffe.AsyncTask
+//open Giraffe.AsyncTask
+open Giraffe.ValueTask
 open Giraffe.HttpHandlers
 open HttpRouter.RouterParsers
 
@@ -99,23 +100,23 @@ let inline bindMe (sf:StringFormat<'U,'T>) (fn : 'T -> HttpHandler) =
 
 let inline (==>) (a:HttpHandler -> Node -> Node) (b:HttpHandler) = a b
 
-type HandlerResult<'T> =
-| None
-| Some of 'T
-| TaskResult of Task<HandlerResult<'T>>
+// type HandlerResult<'T> =
+// | None
+// | Some of 'T
+// | TaskResult of Task<HandlerResult<'T>>
 
-type RouteNodeFn() =
-    let mutable p = ""
-    let mutable bindFn = Unchecked.defaultof<obj -> 'T>
-    let mutable handle = Unchecked.defaultof<HttpHandler>
-    member __.AddPathRoute (path:string) = p <- path
-    member __.AddParseHandler<'U,'T> (sf:StringFormat<'U,'T>) =
-        bindFn <- fun (v2:obj) -> v2 :?> 'T
-    member __.AddHandler (handler:HttpHandler) = handle <- handler
-    static member (>=>) (n:RouteNodeFn) (h:HttpHandler) =
-        n.AddHandler h
-    static member (>=>) (n:RouteNodeFn) (ph:'T -> HttpHandler) =
-        n.AddParseHandler<_,'T>  (ph:'T -> HttpHandler)
+// type RouteNodeFn() =
+//     let mutable p = ""
+//     let mutable bindFn = Unchecked.defaultof<obj -> 'T>
+//     let mutable handle = Unchecked.defaultof<HttpHandler>
+//     member __.AddPathRoute (path:string) = p <- path
+//     member __.AddParseHandler<'U,'T> (sf:StringFormat<'U,'T>) =
+//         bindFn <- fun (v2:obj) -> v2 :?> 'T
+//     member __.AddHandler (handler:HttpHandler) = handle <- handler
+//     static member (>=>) (n:RouteNodeFn) (h:HttpHandler) =
+//         n.AddHandler h
+//     static member (>=>) (n:RouteNodeFn) (ph:'T -> HttpHandler) =
+//         n.AddParseHandler<_,'T>  (ph:'T -> HttpHandler)
 
 //////////////////////
 let private addRoutContToPath (path:string) (rc:ContType)  (root:Node) =     
@@ -288,7 +289,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
             | Some o -> createResult (o :: acc) i fn
             | None -> processMid tail pos acc // ??????????????????
         
-        let rec applyMatch (f:char,ca:char[],n) pos acc tail : Task<HttpContext> =
+        let rec applyMatch (f:char,ca:char[],n) pos acc tail : ValueTask<HttpContext> =
             match getNodeCompletion ca pos n with
             | Some (fpos,npos,cnode) ->
                 match formatStringMap.[f] path pos fpos with

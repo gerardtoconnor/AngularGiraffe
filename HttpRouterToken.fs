@@ -18,6 +18,34 @@ open HttpRouter.RouterParsers
 // Node Trie using node mapping functions
 ////////////////////////////////////////////////////
 
+/// Tail Clip: clip end of 'str' string staring from int pos -> end
+let inline (-|) (str:string) (from:int) = str.Substring(from,str.Length - from)
+
+let commonPath (str1:string) (str2:string) =
+    let rec go i =
+        if i < str1.Length && i < str2.Length then
+            if str1.[i] = str2.[i] 
+            then go (i + 1)
+            else i                               
+        else i
+    go 0
+
+type PathMatch =
+| SubMatch of int
+| PathInToken
+| TokenInPath
+| ZeroToken
+| ZeroMatch
+
+let getPathMatch (path:string) (token:string) =
+    if token.Length = 0 then ZeroToken
+    else
+        let cp = commonPath path token
+        if cp = 0 then ZeroMatch
+        elif cp = token.Length then TokenInPath
+        elif cp = path.Length  then PathInToken
+        else SubMatch cp
+
 type Node(token:string) = 
     
     let mutable midFns = []
@@ -25,26 +53,60 @@ type Node(token:string) =
     
     let addMidFn (mfn:MidCont) = midFns <- mfn :: midFns |> List.sortBy (fun f -> f.Precedence)
     let addEndFn (efn:EndCont) = endFns <- efn :: endFns |> List.sortBy (fun f -> f.Precedence) 
-    let addRouteFn fn =
+    let addRouteFn fn (node:Node) =
         match fn with
         | Empty -> ()
         | Mid mfn -> addMidFn mfn
         | End efn -> addEndFn efn
     //do addRouteFn routeFn
     let mutable hasEdges = false //quick field to check if node has edges
-    let edges = Dictionary<char,Node>()
-    member val Token = token with get,set
+    let edges = Dictionary<char,Node>()   
+    let rec nodeUpdate (path:string) (rc:ContType) (node:Node) =
+        // if node empty/root
+        if node.Token = "" then
+            node.Token <- path
+            addRouteFn rc node
+            node
+        // if tokens match, add to existing handlers            
+        elif path = node.Token then
+          addRouteFn rc node
+        // if path extends beyond current token
+        elif path.StartsWith node.Token then
+            let rem = path -| (node.Token.Length)
+            match node.TryGetValue rem.[0] with
+            | true, cnode ->
+                nodeUpdate rem rc cnode
+            | fales, _    ->
+                let nnode = Node(rem)
+                addRouteFn rc nnode
+                nnode
+        // need to split existing node out
+        elif node.Token.StartsWith path then
+            // need to split existing node out
+            let sedges = node.Edges //get ref to pass to split node
+            node.Edges <- Dictionary<_,_>() //wipte edges
+            let snode = node.Add (node.Token -| path.Length) Empty // create split node
+            node.Token <- path
+            snode.Edges <- sedges
+            //copy over existing functions
+            snode.MidFns <- node.MidFns
+            snode.EndFns <- node.EndFns
+            //clear functions from existing node 
+            node.MidFns <- List.empty
+            node.EndFns <- List.empty
+            addRouteFn rc node
+        else
+                        
 
-    member __.MidFns
-        with get() = midFns 
-        and set v = midFns <- v
-    member __.AddMidFn = addMidFn
-    member __.EndFns 
-        with get()  = endFns 
-        and set v = endFns <- v 
-    member __.AddEndFn = addEndFn
-    
-    member x.Add (token:string) routeFn =
+            match node.TryGetValue path.[i] with
+            | true, cn ->
+                nodeUpdate i 0 cn
+            | false, _ ->
+                nodeUpdate i 0 (Node (path -| i)
+
+
+
+    let addEdge (token:string) routeFn =
         match edges.TryGetValue token.[0] with
         | true, node -> 
             match routeFn with
@@ -60,7 +122,23 @@ type Node(token:string) =
             | End efn -> node.AddEndFn efn
             edges.Add(token.[0],node)
             if not hasEdges then hasEdges <- true //quick field to check if node has edges
-            node            
+            node
+
+    
+    member val Edges = edges with get,set        
+    member val Token = token with get,set
+    
+    member __.MidFns
+        with get() = midFns 
+        and set v = midFns <- v
+    member __.AddMidFn = addMidFn
+    member __.EndFns 
+        with get()  = endFns 
+        and set v = endFns <- v 
+    member __.AddEndFn = addEndFn
+    
+    member x.Add (token:string) routeFn =
+        xxx            
     member x.EdgeCount 
         with get () = edges.Count
     member x.GetEdgeKeys = edges.Keys
@@ -106,8 +184,6 @@ let inline bindMe (sf:StringFormat<'U,'T>) (fn : 'T -> HttpHandler) =
 // temporary compose out handler to allow composition out of route functions, same as wraping in () or using <|
 let inline (==>) (a:HttpHandler -> Node -> Node) (b:HttpHandler) = a b
 
-/// Tail Clip: 
-let inline (-|) (str:string) (close:int) = str.Substring(close,str.Length - close)
 
 let private addRoutContToPath (path:string) i j (rc:ContType)  (root:Node) =     
     let last = path.Length - 1 
@@ -194,79 +270,45 @@ let subRouteT (path:string) (fn:HttpHandler) (root:Node) =
 let routeTf (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node)=
     let last = path.Value.Length - 1
 
-    let getParse i j pcount (node:Node) =
+    let rec go i ts pcount (node:Node) =
         let pl = path.Value.IndexOf('%',i)
         if pl < 0 then
             //Match Complete
-            addRoutContToPath path.Value i 0 (MatchComplete( pcount , bindMe path fn ) |> End)                    
+            addRoutContToPath path.Value i 0 (MatchComplete( pcount , bindMe path fn ) |> End) node              
         else
             if pl + 1 <= last then
                 let fmtChar = path.Value.[pl + 1]
                 // overrided %% -> % case
                 if fmtChar = '%' then
-                    node.Add '%' Empty
-                    |> go (i + 2) pcount
+                    //keep token start, skip 
+                    go (i + 2) ts pcount node
                 // formater with valid key
                 else if formatStringMap.ContainsKey fmtChar then
 
                     if pl + 1 = last then // if finishes in a parse
                         if node.MidFns |> List.exists (function | ApplyMatchAndComplete(c,_,_) -> fmtChar = c | _ -> false )
                         then sprintf "duplicate paths detected '%s', Trie Build skipping..." path.Value |> failwith
-                        else node.AddMidFn <| ApplyMatchAndComplete( fmtChar , pcount + 1 , bindMe path fn )
+                        else 
+                            node.AddMidFn <| ApplyMatchAndComplete( fmtChar , pcount + 1 , bindMe path fn )
+                            node.Token <- path.Value.Substring(ts,pl - ts + 1)
                         node
                     else
                         //otherwise add mid pattern parse apply
                         
                         let cnode,midFns = getPostMatchNode fmtChar path.Value.[i+2] node.MidFns                                                    
                         node.MidFns <- midFns //update adjusted functions
-                        go (i + 2) (pcount + 1) cnode
+                        node.Token <- path.Value.Substring(ts,pl - ts + 1)
+                        go (i + 2) (pl + 2) (pcount + 1) cnode
                 // badly formated format string that has unknown char after %
                 else
                     failwith (sprintf "Routef parsing error, invalid format char identifier '%c' , should be: b | c | s | i | d | f" fmtChar)
-                    node.Add path.Value.[i] Empty
-                    |> go (i + 1) pcount
+                    go (pl + 1) ts pcount node
             else
                 //normal string match path/chain
-                node.Token <- node.Token + string path.Value.[i]
-                go (i + 1) pcount node
+                node.Token <- path.Value.Substring(ts,last - ts + 1) //<<<<< check
+                go (pl + 1) (pl+1) pcount node
 
-
-    let rec go i (pcount) (node:Node)  =
-        if i = last then
-            // have reached the end of the string match so add fn handler, and no continuation node            
-            node.Add path.Value.[i] (MatchComplete( pcount , bindMe path fn ) |> End)
-            //node.RouteFn <- (MatchComplete( pcount , bindMe path fn ))
-        else
-            if path.Value.[i] = '%' && i + 1 <= last then
-                let fmtChar = path.Value.[i + 1]
-                // overrided %% -> % case
-                if fmtChar = '%' then
-                    node.Add '%' Empty
-                    |> go (i + 2) pcount
-                // formater with valid key
-                else if formatStringMap.ContainsKey fmtChar then
-
-                    if i + 1 = last then // if finishes in a parse
-                        if node.MidFns |> List.exists (function | ApplyMatchAndComplete(c,_,_) -> fmtChar = c | _ -> false )
-                        then sprintf "duplicate paths detected '%s', Trie Build skipping..." path.Value |> failwith
-                        else node.AddMidFn <| ApplyMatchAndComplete( fmtChar , pcount + 1 , bindMe path fn )
-                        node
-                    else
-                        //otherwise add mid pattern parse apply
-                        
-                        let cnode,midFns = getPostMatchNode fmtChar path.Value.[i+2] node.MidFns                                                    
-                        node.MidFns <- midFns //update adjusted functions
-                        go (i + 2) (pcount + 1) cnode
-                // badly formated format string that has unknown char after %
-                else
-                    failwith (sprintf "Routef parsing error, invalid format char identifier '%c' , should be: b | c | s | i | d | f" fmtChar)
-                    node.Add path.Value.[i] Empty
-                    |> go (i + 1) pcount
-            else
-                //normal string match path/chain
-                node.Token <- node.Token + string path.Value.[i]
-                go (i + 1) pcount node
-    go 0 0 root 
+    go 0 0 0 root 
 
 // choose root will apply its root node to all route mapping functions to generate Trie at compile time, function produced will take routeState (path) and execute appropriate function
 
@@ -299,7 +341,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
     
     /// (next match chars,pos,match completion node) -> (parse end,pos skip completed node,skip completed node) option
     let rec getNodeCompletion (cs:char []) pos (node:Node) =
-        match path.IndexOfAny(cs,pos) with
+        match path.IndexOfAny(cs,pos) with // jump to next char ending (possible instr optimize vs node +1 crawl) 
         | -1 -> None
         | x1 -> //x1 represents position of match close char but rest of chain must be confirmed 
             match checkMatchSubPath x1 node with

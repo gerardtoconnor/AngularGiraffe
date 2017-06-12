@@ -8,7 +8,8 @@ open Microsoft.AspNetCore.NodeServices
 open Microsoft.AspNetCore.SpaServices.Prerendering
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.AspNetCore.Http.Extensions
-open Giraffe.AsyncTask
+open Giraffe.ValueTask
+//open Giraffe.AsyncTask
 open Giraffe.HttpHandlers
 open Giraffe.Common
 open WebApi

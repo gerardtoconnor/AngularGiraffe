@@ -4,10 +4,10 @@
     <TargetFramework>netcoreapp1.1</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <!--<Compile Include="ValueTask.fs"/>-->
     <Compile Include="RouterParsers.fs"/>
     <Compile Include="HttpRouter.fs"/>
-    <Compile Include="HttpRouterToken.fs"/>
-    <!--<Compile Include="HttpRouterPerf.fs"/>-->
+    <!--<Compile Include="HttpRouterToken.fs"/>-->
     <Compile Include="WebApi.fs"/>
     <Compile Include="PreRender.fs"/>
     <Compile Include="Program.fs"/>
@@ -28,6 +28,7 @@
     <PackageReference Include="Microsoft.AspNetCore.AngularServices" Version="1.1.0-beta-000002"/>
     <PackageReference Include="Microsoft.Extensions.FileProviders.Physical" Version="2.0.0-preview1-final"/>
     <PackageReference Include="Microsoft.AspNetCore.ResponseCaching" Version="1.1.*"/>
+    <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.4.0-preview1-25305-02"/>
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Giraffe,Version=0.1.0-alpha018,Culture=neutral">

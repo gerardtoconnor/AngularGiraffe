@@ -16,7 +16,8 @@ open Giraffe.HttpHandlers
 open Test.HttpRouter
 open Giraffe.Middleware
 open Giraffe.Common
-open Giraffe.AsyncTask
+open Giraffe.ValueTask
+//open Giraffe.AsyncTask
 
 let webApp = 
     routeTrie [
