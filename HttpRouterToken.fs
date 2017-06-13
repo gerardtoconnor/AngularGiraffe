@@ -106,12 +106,17 @@ type Node(token:string) as x =
             // if node empty/root
             node.Token <- path
             Node.AddFn node rc
+            node
         | ZeroMatch ->
             failwith "path passed to node with non-matching start in error"
-        | FullMatch -> Node.AddFn node rc 
+            node
+        | FullMatch -> 
+            Node.AddFn node rc
+            node
         | PathInToken ->
             Node.Split node (path.Length)
-            Node.AddFn node rc 
+            Node.AddFn node rc
+            node 
         | TokenInPath ->
             //path extends beyond this node
             let rem = path -| (node.Token.Length)
@@ -120,13 +125,15 @@ type Node(token:string) as x =
                 Node.AddPath cnode rem rc // recursive path scan
             | fales, _    ->
                 let nnode = Node(rem)
-                Node.AddFn nnode rc 
+                Node.AddFn nnode rc
+                nnode
         | SubMatch (i) ->
             Node.Split node (i)
             let rem = path -| i
             let nnode = Node(rem)
             node.Edges.Add(rem.[0],nnode)
-            Node.AddFn nnode rc 
+            Node.AddFn nnode rc
+            nnode 
                         
 // Route Continuation Functions    
 and MidCont =
@@ -184,7 +191,7 @@ let getPostMatchNode fmt (nxt:char) (ils:MidCont list) =
         | [] -> 
             match no with 
             | None -> 
-                let n = Node(Empty)
+                let n = Node("")
                 n ,(ApplyMatch(fmt,[|nxt|],n)) :: acc |> List.sortBy (fun fn -> fn.Precedence)
             | Some n -> n, acc |> List.sortBy (fun fn -> fn.Precedence)
         | hfn :: tfns ->
@@ -193,6 +200,7 @@ let getPostMatchNode fmt (nxt:char) (ils:MidCont list) =
                 if f = fmt then
                     let nncl = addCharArray nxt ncl
                     go tfns (ApplyMatch(f,nncl,n)::acc) (Some(n))
+                    // finished as found matched format but need to complete acc list
                 else go tfns (hfn::acc) no
             | _ -> go tfns (hfn::acc) no
     go ils [] None
@@ -213,41 +221,36 @@ let routeTf (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node)=
 
     let rec go i ts pcount (node:Node) =
         let pl = path.Value.IndexOf('%',i)
-        if pl < 0 then
-            //Match Complete
-            Node.AddPath node (path.Value -| i) (MatchComplete( pcount , bindMe path fn ) |> End)              
-        else
-            if pl + 1 <= last then
-                let fmtChar = path.Value.[pl + 1]
-                // overrided %% -> % case
-                if fmtChar = '%' then
-                    //keep token start, skip 
-                    go (i + 2) ts pcount node
-                // formater with valid key
-                else if formatStringMap.ContainsKey fmtChar then
-
-                    if pl + 1 = last then // if finishes in a parse
-                        if node.MidFns |> List.exists (function | ApplyMatchAndComplete(c,_,_) -> fmtChar = c | _ -> false )
-                        then sprintf "duplicate paths detected '%s', Trie Build skipping..." path.Value |> failwith
-                        else 
-                            node.AddMidFn <| ApplyMatchAndComplete( fmtChar , pcount + 1 , bindMe path fn )
-                            node.Token <- path.Value.Substring(ts,pl - ts + 1)
-                        node
-                    else
-                        //otherwise add mid pattern parse apply
-                        
-                        let cnode,midFns = getPostMatchNode fmtChar path.Value.[i+2] node.MidFns                                                    
-                        node.MidFns <- midFns //update adjusted functions
-                        node.Token <- path.Value.Substring(ts,pl - ts + 1)
-                        go (i + 2) (pl + 2) (pcount + 1) cnode
-                // badly formated format string that has unknown char after %
-                else
-                    failwith (sprintf "Routef parsing error, invalid format char identifier '%c' , should be: b | c | s | i | d | f" fmtChar)
-                    go (pl + 1) ts pcount node
+        if pl < 0 || pl = last then
+            //Match Complete (no futher parse '%' chars
+            if pcount = 0 then
+                failwith "'routef' (route Parse) used with no arguments? please add % format args or change to simple 'route' for non-parse routes"
             else
-                //normal string match path/chain
-                node.Token <- path.Value.Substring(ts,last - ts + 1) //<<<<< check
-                go (pl + 1) (pl+1) pcount node
+                Node.AddPath node (path.Value -| ts) (MatchComplete( pcount , bindMe path fn ) |> End)              
+        else 
+            let fmtChar = path.Value.[pl + 1]
+            // overrided %% -> % case
+            if fmtChar = '%' then
+                //keep token start (+1 just one %), skip 
+                go (pl + 2) (ts + 1) pcount node
+            // formater with valid key
+            else if formatStringMap.ContainsKey fmtChar then
+
+                if pl + 1 = last then // if finishes in a parse
+                    if node.MidFns |> List.exists (function | ApplyMatchAndComplete(c,_,_) -> fmtChar = c | _ -> false )
+                    then sprintf "duplicate paths detected '%s', Trie Build skipping..." path.Value |> failwith
+                    else
+                        Node.AddPath node (path.Value.Substring(ts,pl - ts)) (ApplyMatchAndComplete( fmtChar , pcount + 1 , bindMe path fn ) |> Mid)
+                else //otherwise add mid pattern parse apply
+                    //get node this parser will be on
+                    let nnode = Node.AddPath node (path.Value.Substring(ts,pl - ts)) Empty
+                    let cnode,midFns = getPostMatchNode fmtChar path.Value.[pl+2] nnode.MidFns                                                    
+                    nnode.MidFns <- midFns //update adjusted functions
+                    go (pl + 2) (pl + 2) (pcount + 1) cnode
+            // badly formated format string that has unknown char after %
+            else
+                failwith (sprintf "Routef parsing error, invalid format char identifier '%c' , should be: b | c | s | i | d | f" fmtChar)
+                go (pl + 1) ts pcount node
 
     go 0 0 0 root 
 
@@ -257,12 +260,31 @@ let routeTf (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node)=
 let private processPath (rs:RouteState) (root:Node) : HttpHandler =
     fun (succ:Continuation) (fail:Continuation) (ctx:HttpContext) -> 
     
-    let path = rs.path
+    let path : string = rs.path
     let ipos = rs.pos
     let last = path.Length - 1
     
-    let rec checkMatchSubPath pos (node:Node) = // this funciton is only used by parser paths
+    let rec checkMatchSubPath (pos:int) (node:Node) = // this funciton is only used by parser paths
         //this function doesn't test array bounds as all callers do so before
+        match path.IndexOf(node.Token,pos) with
+        | 0 ->
+            if (pos + node.Token.Length) = last then //if this pattern match shares node chain as substring of another
+                if node.EndFns.IsEmpty
+                then pos, None
+                else pos, Some node
+            else
+                checkMatchSubPath (pos + 1) n
+            match node.TryGetValue path.[pos + node.Token.Length] with
+            | true, cnode ->
+                if pos = last then //if have reached end of path through nodes, run HandlerFn
+                    processEnd cnode.EndFns pos []
+                else                //need to continue down chain till get to end of path
+                    crawl (pos + node.Token.Length) cnode
+            | false, _ ->
+                // no further nodes, either a static url didnt match or there is a pattern match required            
+                processMid node.MidFns pos []
+        | _ -> fail ctx
+        
         match node.TryGetValue path.[pos] with
         | true, n -> 
             if pos = last then //if this pattern match shares node chain as substring of another
@@ -353,16 +375,24 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
                 saveRouteState pos
                 fn succ fail ctx
 
-    let rec crawl pos (node:Node) =
-        match node.TryGetValue path.[pos] with
-        | true, n ->
-            if pos = last then //if have reached end of path through nodes, run HandlerFn
-                processEnd n.EndFns pos []
-            else                //need to continue down chain till get to end of path
-                crawl (pos + 1) n
-        | false , _ ->
-            // no further nodes, either a static url didnt match or there is a pattern match required            
-            processMid node.MidFns pos []
+    let rec crawl (pos:int) (node:Node) =
+        match path.IndexOf(node.Token,pos) with
+        | 0 -> 
+            if (pos + node.Token.Length ) = last then //if have reached end of path through nodes, run HandlerFn
+                processEnd node.EndFns pos []
+            else
+                
+            
+            match node.TryGetValue path.[pos + node.Token.Length] with
+            | true, cnode ->
+                if (pos + cnode.Token.Length ) = last then //if have reached end of path through nodes, run HandlerFn
+                    processEnd cnode.EndFns pos []
+                else                //need to continue down chain till get to end of path
+                    crawl (pos + node.Token.Length) cnode
+            | false, _ ->
+                // no further nodes, either a static url didnt match or there is a pattern match required            
+                processMid node.MidFns pos []
+        | _ -> fail ctx            
 
     crawl ipos root
 
