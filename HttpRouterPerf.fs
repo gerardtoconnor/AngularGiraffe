@@ -214,20 +214,19 @@ let work =
 type AryNode =
     val Char : byte
     val Hop : int16
-    val Instr : byte
-    new (char,hop,instr) = { Char=char ; Hop=hop ; Instr=instr }
+    val Retry : byte
+    new (char,hop,retry) = { Char=char ; Hop=hop ; Retry=retry }
 
 let runPath (path:string) (nodes:AryNode []) (fns:Dictionary<int,string>) =
     let rec go p n rt =
-        if (byte path.[p]) = nodes.[n].Char then
-            match nodes.[n].Instr with
-            | 255uy ->  
-                Some(fns.[n])
-            | nrt ->
-                go (p + 1) (int nodes.[n].Hop) nrt
-        else
-            if rt > 0uy then
-                go (p + 1) (int nodes.[n].Hop) (rt - 1uy)
-            else
-                None
+        match (byte path.[p]) = nodes.[n].Char with
+        | true ->
+            match n = (int nodes.[n].Hop) with
+            | true -> Some(fns.[n])
+            | false -> go (p + 1) (int nodes.[n].Hop) nodes.[n].Retry          
+        | false ->
+            match rt with
+            | 0uy -> None
+            | x -> go (p + 1) (int nodes.[n].Hop) (x - 1uy)
+
     go 0 0 0uy

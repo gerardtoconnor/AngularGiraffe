@@ -19,7 +19,7 @@ let private writeLayoutRender (res:HttpResponse) (file:string) (tag:string) (dat
     let enum = System.IO.File.ReadLines(file).GetEnumerator()
     let write str = res.WriteAsync(str)
 
-    let rec go searching = task {
+    let rec go searching : ValueTask<_> = task {
         if enum.MoveNext() then
             if searching then
                 let i = enum.Current.IndexOf(tag)

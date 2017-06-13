@@ -81,16 +81,24 @@ module Giraffe.ValueTask
         member this.Zero() = returnM ()
 
         member this.ReturnFrom (a: ValueTask<'T>) = a
+        
         member this.ReturnFrom (a: Task<'T>) = ValueTask<'T>(a)
+
+        member this.ReturnFrom (a: Task) = ValueTask<'T>(a) //HACK, need to handle
 
         member this.Bind(m, f) = vtbind f m // bindWithOptions cancellationToken contOptions scheduler f m
 
         member this.Bind(m, f) = tbind f m // bindWithOptions cancellationToken contOptions scheduler f m
 
+        member this.Bind(m, f) = taskBind f m
+
         member this.Combine(comp1:Task<_>, comp2) =
             this.Bind(comp1, comp2)
             
         member this.Combine(comp1:ValueTask<_>, comp2) =
+            this.Bind(comp1, comp2)
+
+        member this.Combine(comp1:Task, comp2) =
             this.Bind(comp1, comp2)
 
         member this.While(guard, m:unit -> ValueTask<_>) =
@@ -99,11 +107,15 @@ module Giraffe.ValueTask
                     this.Bind(m(), fun () -> whileRec(guard, m))
             whileRec(guard, m)
         
-        member this.TryWith(m,exFn) =
+        member this.TryWith(m:unit->ValueTask<_>,exFn) =
             try this.ReturnFrom (m())
             with ex -> exFn ex
 
-        member this.TryFinally(m, compensation) =
+        member this.TryWith(m:unit->Task,exFn) =
+            try this.ReturnFrom (m())
+            with ex -> exFn ex
+
+        member this.TryFinally(m:unit->ValueTask<_>, compensation) =
             try this.ReturnFrom (m())
             finally compensation()
 

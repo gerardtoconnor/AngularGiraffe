@@ -7,7 +7,8 @@ open Microsoft.Extensions.Primitives
 open FSharp.Core.Printf
 open System.Collections.Generic
 open Microsoft.FSharp.Reflection
-open Giraffe.AsyncTask
+//open Giraffe.AsyncTask
+open Giraffe.ValueTask
 open Giraffe.HttpHandlers
 open HttpRouter.RouterParsers
 
@@ -20,6 +21,15 @@ open HttpRouter.RouterParsers
 
 /// Tail Clip: clip end of 'str' string staring from int pos -> end
 let inline (-|) (str:string) (from:int) = str.Substring(from,str.Length - from)
+
+let commonPathIndex (str1:string) (idx1:int) (str2:string) =
+    let rec go i j =
+        if i < str1.Length && j < str2.Length then
+            if str1.[i] = str2.[j] 
+            then go (i + 1) (i + j)
+            else i                
+        else i
+    go idx1 0 
 
 let commonPath (str1:string) (str2:string) =
     let rec go i =
@@ -264,50 +274,30 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
     let ipos = rs.pos
     let last = path.Length - 1
     
-    let rec checkMatchSubPath (pos:int) (node:Node) = // this funciton is only used by parser paths
+    let rec checkCompletionPath (pos:int) (node:Node) = // this funciton is only used by parser paths
         //this function doesn't test array bounds as all callers do so before
-        match path.IndexOf(node.Token,pos) with
-        | 0 ->
+        if commonPathIndex path pos node.Token = node.Token.Length then
             if (pos + node.Token.Length) = last then //if this pattern match shares node chain as substring of another
                 if node.EndFns.IsEmpty
                 then pos, None
                 else pos, Some node
             else
-                checkMatchSubPath (pos + 1) n
-            match node.TryGetValue path.[pos + node.Token.Length] with
-            | true, cnode ->
-                if pos = last then //if have reached end of path through nodes, run HandlerFn
-                    processEnd cnode.EndFns pos []
-                else                //need to continue down chain till get to end of path
-                    crawl (pos + node.Token.Length) cnode
-            | false, _ ->
-                // no further nodes, either a static url didnt match or there is a pattern match required            
-                processMid node.MidFns pos []
-        | _ -> fail ctx
-        
-        match node.TryGetValue path.[pos] with
-        | true, n -> 
-            if pos = last then //if this pattern match shares node chain as substring of another
-                if n.EndFns.IsEmpty
-                then pos, None
-                else pos, Some n
-            else checkMatchSubPath (pos + 1) n
-        | false,_ -> //failed node match on pos represents start of a match
-            if pos = last then
-                if node.EndFns.IsEmpty
-                then pos, None
-                else pos, Some node
-            else
-                if node.MidFns.IsEmpty
-                then pos, None
-                else pos, Some node
+                match node.TryGetValue path.[pos + node.Token.Length] with
+                | true, cnode ->
+                    checkCompletionPath (pos + node.Token.Length) cnode
+                | false, _ ->
+                    // no further nodes, either a static url didnt match or there is a pattern match required            
+                    if node.MidFns.IsEmpty
+                    then pos, None
+                    else pos, Some node
+        else pos, None
     
     /// (next match chars,pos,match completion node) -> (parse end,pos skip completed node,skip completed node) option
     let rec getNodeCompletion (cs:char []) pos (node:Node) =
         match path.IndexOfAny(cs,pos) with // jump to next char ending (possible instr optimize vs node +1 crawl) 
         | -1 -> None
         | x1 -> //x1 represents position of match close char but rest of chain must be confirmed 
-            match checkMatchSubPath x1 node with
+            match checkCompletionPath x1 node with
             | x2,Some cn -> Some(x1 - 1,x2,cn)                 // from where char found to end of node chain complete
             | x2,None   ->  getNodeCompletion cs (x1 + 1) node // char foundpart of match, not completion string
 
@@ -353,7 +343,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
             | Some o -> createResult (o :: acc) i fn
             | None -> processMid tail pos acc // ??????????????????
         
-        let rec applyMatch (f:char,ca:char[],n) pos acc tail : Task<HttpContext> =
+        let rec applyMatch (f:char,ca:char[],n) pos acc tail  =
             match getNodeCompletion ca pos n with
             | Some (fpos,npos,cnode) ->
                 match formatStringMap.[f] path pos fpos with
@@ -381,17 +371,15 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
             if (pos + node.Token.Length ) = last then //if have reached end of path through nodes, run HandlerFn
                 processEnd node.EndFns pos []
             else
-                
-            
-            match node.TryGetValue path.[pos + node.Token.Length] with
-            | true, cnode ->
-                if (pos + cnode.Token.Length ) = last then //if have reached end of path through nodes, run HandlerFn
-                    processEnd cnode.EndFns pos []
-                else                //need to continue down chain till get to end of path
-                    crawl (pos + node.Token.Length) cnode
-            | false, _ ->
-                // no further nodes, either a static url didnt match or there is a pattern match required            
-                processMid node.MidFns pos []
+                match node.TryGetValue path.[pos + node.Token.Length] with
+                | true, cnode ->
+                    if (pos + cnode.Token.Length ) = last then //if have reached end of path through nodes, run HandlerFn
+                        processEnd cnode.EndFns pos []
+                    else                //need to continue down chain till get to end of path
+                        crawl (pos + node.Token.Length) cnode
+                | false, _ ->
+                    // no further nodes, either a static url didnt match or there is a pattern match required            
+                    processMid node.MidFns pos []
         | _ -> fail ctx            
 
     crawl ipos root

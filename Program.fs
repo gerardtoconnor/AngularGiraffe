@@ -1,4 +1,4 @@
-﻿module TaskGiraffe
+﻿module AngularGiraffe
 
 open System
 open System.Collections.Generic

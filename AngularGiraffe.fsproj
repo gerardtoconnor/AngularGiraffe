@@ -5,9 +5,10 @@
   </PropertyGroup>
   <ItemGroup>
     <!--<Compile Include="ValueTask.fs"/>-->
+    <!--<Compile Include="ValueTask.fs" />-->
     <Compile Include="RouterParsers.fs"/>
     <Compile Include="HttpRouter.fs"/>
-    <!--<Compile Include="HttpRouterToken.fs"/>-->
+    <Compile Include="HttpRouterToken.fs"/>
     <Compile Include="WebApi.fs"/>
     <Compile Include="PreRender.fs"/>
     <Compile Include="Program.fs"/>
