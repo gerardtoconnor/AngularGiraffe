@@ -15,6 +15,12 @@ open HttpRouter.RouterParsers
 // implimenation of (router) Trie Node
 // assumptions: memory and compile time not relevant, all about execution speed, initially testing with Dictionary edges
 
+let routerKey = "router_pos"
+
+type RouteState(path:string) =
+    member val path = path with get
+    member val pos = 0 with get , set
+
 ////////////////////////////////////////////////////
 // Node Trie using node mapping functions
 ////////////////////////////////////////////////////

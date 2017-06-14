@@ -15,6 +15,12 @@ open HttpRouter.RouterParsers
 // implimenation of (router) Trie Node
 // assumptions: memory and compile time not relevant, all about execution speed, initially testing with Dictionary edges
 
+let routerKey = "router_pos"
+
+type RouteState(path:string) =
+    member val path = path with get
+    member val pos = 0 with get , set
+
 ////////////////////////////////////////////////////
 // Node Trie using node mapping functions
 ////////////////////////////////////////////////////
@@ -68,9 +74,11 @@ type Node(token:string) as x =
     let addMidFn (mfn:MidCont) = midFns <- mfn :: midFns |> List.sortBy (fun f -> f.Precedence)
     let addEndFn (efn:EndCont) = endFns <- efn :: endFns |> List.sortBy (fun f -> f.Precedence) 
     
-    let edges = Dictionary<char,Node>()
+    let mutable edges = Dictionary<char,Node>()
     
-    member val Edges = edges with get,set        
+    member __.Edges 
+        with get() = edges
+        and set v = edges <- v        
     member val Token = token with get,set
     
     member __.MidFns
@@ -98,11 +106,12 @@ type Node(token:string) as x =
         let baseToken = node.Token.Substring(0,pos) //new start base token
         let childToken = (node.Token -| pos)
         let snode = Node(childToken)
+        node.Edges <- Dictionary<_,_>() //wipe edges from node before adding new edge
         node.Edges.Add(childToken.[0],snode)
         //node.Add childToken Empty // create split node
         node.Token <- baseToken
-        snode.Edges <- sedges
-        node.Edges <- Dictionary<_,_>() //wipe edges from node
+        snode.Edges <- sedges //pass old edges dictionary to split node
+
         //copy over existing functions
         snode.MidFns <- node.MidFns
         snode.EndFns <- node.EndFns
@@ -403,4 +412,6 @@ let routeTrie (fns:(Node->Node) list) : HttpHandler =
             | true, (v:obj) -> v :?> RouteState  
             | false,_-> RouteState(ctx.Request.Path.Value)
         processPath routeState root ctx
+
+let xcute x y = x + y 
 

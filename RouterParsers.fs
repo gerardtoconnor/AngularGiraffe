@@ -9,12 +9,6 @@ let inline floatIn x l u = (x - l) * (u - x) >= 0.
 
 let inline byteIn x l u = (x - l) * (u - x) >= 0uy
 
-let routerKey = "router_pos"
-
-type RouteState(path:string) =
-    member val path = path with get
-    member val pos = 0 with get , set
-
 /// Private Range Parsers that quickly try parse over matched range (all fpos checked before running in preceeding functions)
 
 let private stringParse (path:string) ipos fpos = path.Substring(ipos,fpos - ipos + 1) |> box |> Some
