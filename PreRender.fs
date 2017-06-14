@@ -40,7 +40,7 @@ let private writeLayoutRender (res:HttpResponse) (file:string) (tag:string) (dat
     go true
          
 let private executeResultAsync dataToSupply : HttpHandler =
-    fun succ fail ctx ->
+    fun ctx ->
         let nodeServices = ctx.RequestServices.GetRequiredService<INodeServices>()
         let hostEnv = ctx.RequestServices.GetRequiredService<IHostingEnvironment>()
         let applicationBasePath = hostEnv.ContentRootPath
@@ -67,7 +67,7 @@ let private executeResultAsync dataToSupply : HttpHandler =
         do! writeLayoutRender response (applicationBasePath + "/Views/Home/Index.html") "<app></app>" dataToSupply prerenderedHtml
         //do! response.WriteAsync(prerenderedHtml.Html) |> Async.AwaitTask
 
-        return! succ ctx
+        return Some ctx
     }
 
 let renderIndex  : HttpHandler = executeResultAsync "" 

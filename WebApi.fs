@@ -16,12 +16,12 @@ open Giraffe.ValueTask
 
 
 let AuthTestHandler : HttpHandler =
-    fun succ fail ctx -> task {
+    fun ctx -> task {
         let! (prin:Security.Claims.ClaimsPrincipal) = ctx.Authentication.AuthenticateAsync("Test")
         if prin.Identity.Name = "Gerry" then
-            return! succ ctx
+            return Some ctx
         else
-            return! fail ctx
+            return None
     }
 
 // let dist (path:sring) (ctx:HttpContext) : HttpHandlerResult =

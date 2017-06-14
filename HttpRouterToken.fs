@@ -269,7 +269,7 @@ let routeTf (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node)=
 
 // process path fn that returns httpHandler
 let private processPath (rs:RouteState) (root:Node) : HttpHandler =
-    fun (succ:Continuation) (fail:Continuation) (ctx:HttpContext) -> 
+    fun (ctx:HttpContext) -> //(succ:Continuation) (fail:Continuation)
     
     let path : string = rs.path
     let ipos = rs.pos
@@ -323,7 +323,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
                 
                 let tupleType = FSharpType.MakeTupleType valuesTypes
                 FSharpValue.MakeTuple(values, tupleType)
-        fn input succ fail ctx
+        fn input ctx
 
     let saveRouteState pos = 
         rs.pos <- pos
@@ -331,10 +331,10 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
 
     let rec processEnd (fns:EndCont list) pos args =
         match fns with
-        | [] -> fail ctx
+        | [] -> None
         | h :: t ->
             match h with                    
-            | HandlerMap fn -> fn succ fail ctx // run function with all parameters
+            | HandlerMap fn -> fn ctx // run function with all parameters
             | MatchComplete (i,fn) -> createResult args i fn 
 
     let rec processMid (fns:MidCont list) pos args =
@@ -357,14 +357,14 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
             | None -> processMid tail pos acc // subsequent match could not complete so fail
         
         match fns with
-        | [] -> fail ctx
+        | [] -> None
         | h :: t ->
             match h with
             | ApplyMatch x -> applyMatch x pos args t
             | ApplyMatchAndComplete x -> applyMatchAndComplete pos args x t
             | SubRouteMap (fn) ->
                 saveRouteState pos
-                fn succ fail ctx
+                Some ctx
 
     let rec crawl (pos:int) (node:Node) =
         match path.IndexOf(node.Token,pos) with
@@ -381,7 +381,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
                 | false, _ ->
                     // no further nodes, either a static url didnt match or there is a pattern match required            
                     processMid node.MidFns pos []
-        | _ -> fail ctx            
+        | _ -> None            
 
     crawl ipos root
 
@@ -396,11 +396,11 @@ let routeTrie (fns:(Node->Node) list) : HttpHandler =
             go t
     go fns
 
-    fun succ fail ctx ->
+    fun ctx ->
         //get path progress (if any so far)
         let routeState =
             match ctx.Items.TryGetValue routerKey with
             | true, (v:obj) -> v :?> RouteState  
             | false,_-> RouteState(ctx.Request.Path.Value)
-        processPath routeState root succ fail ctx
+        processPath routeState root ctx
 
