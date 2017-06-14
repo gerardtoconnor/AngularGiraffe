@@ -118,7 +118,7 @@ type Node(token:string) as x =
             Node.AddFn node rc
             node
         | ZeroMatch ->
-            failwith "path passed to node with non-matching start in error"
+            failwith <| sprintf "path passed to node with non-matching start in error:%s" path
             node
         | FullMatch -> 
             Node.AddFn node rc
@@ -135,6 +135,7 @@ type Node(token:string) as x =
                 Node.AddPath cnode rem rc // recursive path scan
             | fales, _    ->
                 let nnode = Node(rem)
+                node.Edges.Add(rem.[0], nnode)
                 Node.AddFn nnode rc
                 nnode
         | SubMatch (i) ->

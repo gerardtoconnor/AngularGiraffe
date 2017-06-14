@@ -8,7 +8,7 @@ open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Hosting
 open Microsoft.AspNetCore.Http
 open Giraffe.HttpHandlers
-open Test.HttpRouter
+open Test.HttpRouterToken
 open Giraffe.Middleware
 open Giraffe.Common
 open Giraffe.ValueTask
