@@ -32,9 +32,9 @@ let commonPathIndex (str1:string) (idx1:int) (str2:string) =
     let rec go i j =
         if i < str1.Length && j < str2.Length then
             if str1.[i] = str2.[j] 
-            then go (i + 1) (i + j)
-            else i                
-        else i
+            then go (i + 1) (j + 1)
+            else j                
+        else j
     go idx1 0 
 
 let commonPath (str1:string) (str2:string) =
@@ -290,7 +290,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
             if (pos + node.Token.Length) = last then //if this pattern match shares node chain as substring of another
                 if node.EndFns.IsEmpty
                 then pos, None
-                else pos, Some node
+                else pos + node.Token.Length, Some node
             else
                 match node.TryGetValue path.[pos + node.Token.Length - 1] with
                 | true, cnode ->
@@ -299,7 +299,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
                     // no further nodes, either a static url didnt match or there is a pattern match required            
                     if node.MidFns.IsEmpty
                     then pos, None
-                    else pos, Some node
+                    else pos + node.Token.Length, Some node
         else pos, None
     
     /// (next match chars,pos,match completion node) -> (parse end,pos skip completed node,skip completed node) option
@@ -376,21 +376,24 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
                 fn ctx
 
     let rec crawl (pos:int) (node:Node) =
-        match path.IndexOf(node.Token,pos) with
-        | 0 -> 
+        let cp = commonPathIndex path pos node.Token 
+        if cp = node.Token.Length then
             if (pos + node.Token.Length - 1 ) = last then //if have reached end of path through nodes, run HandlerFn
                 processEnd node.EndFns pos []
             else
                 match node.TryGetValue path.[pos + node.Token.Length ] with
                 | true, cnode ->
                     if (pos + cnode.Token.Length ) = last then //if have reached end of path through nodes, run HandlerFn
-                        processEnd cnode.EndFns pos []
+                        processEnd cnode.EndFns (pos + node.Token.Length) []
                     else                //need to continue down chain till get to end of path
                         crawl (pos + node.Token.Length ) cnode
                 | false, _ ->
                     // no further nodes, either a static url didnt match or there is a pattern match required            
-                    processMid node.MidFns pos []
-        | _ -> ValueTask<_> None            
+                    let npos = pos + node.Token.Length
+                    processMid node.MidFns (npos) []
+        else 
+            printfn ">> failed to match %s path with %s token, commonPath=%i" (path.Substring(pos)) (node.Token) (commonPathIndex path pos node.Token)
+            ValueTask<_> None            
 
     crawl ipos root
 
