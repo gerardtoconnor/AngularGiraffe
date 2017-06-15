@@ -4,10 +4,7 @@
     <TargetFramework>netcoreapp1.1</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <!--<Compile Include="ValueTask.fs"/>-->
-    <!--<Compile Include="ValueTask.fs" />-->
     <Compile Include="RouterParsers.fs"/>
-    <!--<Compile Include="HttpRouter.fs"/>-->
     <Compile Include="HttpRouterToken.fs"/>
     <Compile Include="WebApi.fs"/>
     <Compile Include="PreRender.fs"/>
@@ -30,6 +27,7 @@
     <PackageReference Include="Microsoft.Extensions.FileProviders.Physical" Version="2.0.0-preview1-final"/>
     <PackageReference Include="Microsoft.AspNetCore.ResponseCaching" Version="1.1.*"/>
     <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.4.0-preview1-25305-02"/>
+    <PackageReference Include="Newtonsoft.Json" Version="10.0.2"/>
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Giraffe,Version=0.1.0-alpha018,Culture=neutral">

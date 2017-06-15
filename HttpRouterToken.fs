@@ -66,7 +66,7 @@ let getPathMatch (path:string) (token:string) =
         elif pathMatch  then PathInToken
         else SubMatch cp
 
-type Node(token:string) as x = 
+type Node(token:string) = 
     
     let mutable midFns = []
     let mutable endFns = []
@@ -292,7 +292,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
                 then pos, None
                 else pos, Some node
             else
-                match node.TryGetValue path.[pos + node.Token.Length] with
+                match node.TryGetValue path.[pos + node.Token.Length - 1] with
                 | true, cnode ->
                     checkCompletionPath (pos + node.Token.Length) cnode
                 | false, _ ->
@@ -340,7 +340,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
 
     let rec processEnd (fns:EndCont list) pos args =
         match fns with
-        | [] -> None
+        | [] -> ValueTask<_> None
         | h :: t ->
             match h with                    
             | HandlerMap fn -> fn ctx // run function with all parameters
@@ -366,31 +366,31 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
             | None -> processMid tail pos acc // subsequent match could not complete so fail
         
         match fns with
-        | [] -> None
+        | [] -> ValueTask<_> None
         | h :: t ->
             match h with
             | ApplyMatch x -> applyMatch x pos args t
             | ApplyMatchAndComplete x -> applyMatchAndComplete pos args x t
             | SubRouteMap (fn) ->
                 saveRouteState pos
-                Some ctx
+                fn ctx
 
     let rec crawl (pos:int) (node:Node) =
         match path.IndexOf(node.Token,pos) with
         | 0 -> 
-            if (pos + node.Token.Length ) = last then //if have reached end of path through nodes, run HandlerFn
+            if (pos + node.Token.Length - 1 ) = last then //if have reached end of path through nodes, run HandlerFn
                 processEnd node.EndFns pos []
             else
-                match node.TryGetValue path.[pos + node.Token.Length] with
+                match node.TryGetValue path.[pos + node.Token.Length ] with
                 | true, cnode ->
                     if (pos + cnode.Token.Length ) = last then //if have reached end of path through nodes, run HandlerFn
                         processEnd cnode.EndFns pos []
                     else                //need to continue down chain till get to end of path
-                        crawl (pos + node.Token.Length) cnode
+                        crawl (pos + node.Token.Length ) cnode
                 | false, _ ->
                     // no further nodes, either a static url didnt match or there is a pattern match required            
                     processMid node.MidFns pos []
-        | _ -> None            
+        | _ -> ValueTask<_> None            
 
     crawl ipos root
 
@@ -412,6 +412,4 @@ let routeTrie (fns:(Node->Node) list) : HttpHandler =
             | true, (v:obj) -> v :?> RouteState  
             | false,_-> RouteState(ctx.Request.Path.Value)
         processPath routeState root ctx
-
-let xcute x y = x + y 
 

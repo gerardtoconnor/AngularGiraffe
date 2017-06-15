@@ -13,23 +13,23 @@ open Microsoft.Extensions.Logging
 open Microsoft.Extensions.FileProviders
 open Microsoft.AspNetCore.SpaServices.Webpack
 open Giraffe.HttpHandlers
-open Test.HttpRouterToken
+//open Test.HttpRouterToken
 open Giraffe.Middleware
 open Giraffe.Common
 open Giraffe.ValueTask
 //open Giraffe.AsyncTask
 
-let webApp = 
-    routeTrie [
-        subRouteT "/api" ==> WebApi.trieApi
-        routeT "/plainroute" ==> text "plain route hit"
-        routeTf "/dist/%s" (fun path -> text path )
-        routeT "/__webpack_hmr" ==> (fun succ fail ctx -> succ ctx)
-        routeT "/" ==> PreRender.renderIndex
-        routeTf "/multiRoute/%s" text 
-        routeTf "/v/%s" (fun s -> PreRender.renderRoute s)
-        //setStatusCode 404 >=> text "Not Found xxx" 
-    ]
+// let webApp = 
+//     routeTrie [
+//         subRouteT "/api" ==> WebApi.trieApi
+//         routeT "/plainroute" ==> text "plain route hit"
+//         routeTf "/dist/%s" (fun path -> text path )
+//         routeT "/__webpack_hmr" ==> (fun ctx -> Some ctx |> ValueTask )
+//         routeT "/" ==> PreRender.renderIndex
+//         routeTf "/multiRoute/%s" text 
+//         routeTf "/v/%s" (fun s -> PreRender.renderRoute s)
+//         //setStatusCode 404 >=> text "Not Found xxx" 
+//     ]
 
 
 // ---------------------------------
@@ -56,7 +56,7 @@ let configureApp (app : IApplicationBuilder) =
         // )
         ) |> ignore
     app.UseGiraffeErrorHandler errorHandler
-    app.UseGiraffe webApp
+    app.UseGiraffe WebApi.webApi
     app.UseWebpackDevMiddleware(WebpackDevMiddlewareOptions(HotModuleReplacement = true))
 
 let configureServices (services : IServiceCollection) =
