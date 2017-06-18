@@ -1,13 +1,3 @@
-C:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\AngularGiraffe.deps.json
-C:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\AngularGiraffe.runtimeconfig.json
-C:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\AngularGiraffe.runtimeconfig.dev.json
-C:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\AngularGiraffe.dll
-C:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\AngularGiraffe.pdb
-C:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\Giraffe.dll
-C:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\Giraffe.pdb
-C:\Code\AngularGiraffe\obj\Debug\netcoreapp1.1\AngularGiraffe.fsproj.CoreCompileInputs.cache
-C:\Code\AngularGiraffe\obj\Debug\netcoreapp1.1\AngularGiraffe.dll
-C:\Code\AngularGiraffe\obj\Debug\netcoreapp1.1\AngularGiraffe.pdb
 D:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\AngularGiraffe.dll
 D:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\AngularGiraffe.pdb
 D:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\Giraffe.dll
@@ -21,3 +11,13 @@ f:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\Giraffe.pdb
 f:\Code\AngularGiraffe\obj\Debug\netcoreapp1.1\AngularGiraffe.fsproj.CoreCompileInputs.cache
 f:\Code\AngularGiraffe\obj\Debug\netcoreapp1.1\AngularGiraffe.dll
 f:\Code\AngularGiraffe\obj\Debug\netcoreapp1.1\AngularGiraffe.pdb
+C:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\AngularGiraffe.deps.json
+C:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\AngularGiraffe.runtimeconfig.json
+C:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\AngularGiraffe.runtimeconfig.dev.json
+C:\Code\AngularGiraffe\obj\Debug\netcoreapp1.1\AngularGiraffe.fsproj.CoreCompileInputs.cache
+C:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\AngularGiraffe.dll
+C:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\AngularGiraffe.pdb
+C:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\Giraffe.dll
+C:\Code\AngularGiraffe\bin\Debug\netcoreapp1.1\Giraffe.pdb
+C:\Code\AngularGiraffe\obj\Debug\netcoreapp1.1\AngularGiraffe.dll
+C:\Code\AngularGiraffe\obj\Debug\netcoreapp1.1\AngularGiraffe.pdb

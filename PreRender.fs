@@ -8,7 +8,7 @@ open Microsoft.AspNetCore.NodeServices
 open Microsoft.AspNetCore.SpaServices.Prerendering
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.AspNetCore.Http.Extensions
-open Giraffe.ValueTask
+open Giraffe.Task
 //open Giraffe.AsyncTask
 open Giraffe.HttpHandlers
 open Giraffe.Common
@@ -17,9 +17,9 @@ open WebApi
 let private moduleExport = JavaScriptModuleExport("./ClientApp/dist/main-server")
 let private writeLayoutRender (res:HttpResponse) (file:string) (tag:string) (data:string) (trender:Task<RenderToStringResult>) =
     let enum = System.IO.File.ReadLines(file).GetEnumerator()
-    let write str = res.WriteAsync(str) |> taskMap
+    let write str = res.WriteAsync(str) |> task.AwaitTask
 
-    let rec go searching : ValueTask<_> = task {
+    let rec go searching = task {
         if enum.MoveNext() then
             if searching then
                 let i = enum.Current.IndexOf(tag)

@@ -3,6 +3,7 @@ module Giraffe.HttpRouter
 open Giraffe.HttpHandlers
 open FSharp.Core.Printf
 open System.Collections.Generic
+open HashDepot
 
 
 let modmatch (ca: char []) =
@@ -210,23 +211,86 @@ let work =
     |> Array.map 
         (fun path -> path.ToCharArray() |> List.ofArray)
 
+type Instr =
+| Hop = 0uy
+| Retry = 1uy
+| Terminal = 2uy     
+
 [<Struct>]
 type AryNode =
     val Char : byte
     val Hop : int16
-    val Retry : byte
-    new (char,hop,retry) = { Char=char ; Hop=hop ; Retry=retry }
+    val Instr : Instr
+    new (char,hop,instr) = { Char=char ; Hop=hop ; Instr=instr }
 
-let runPath (path:string) (nodes:AryNode []) (fns:Dictionary<int,string>) =
-    let rec go p n rt =
+let runPath (nodes:AryNode []) (fns:(bool*(unit->string)) []) (path:string) (ctx:HttpContext) =
+    let rec go p n acc =
         match (byte path.[p]) = nodes.[n].Char with
         | true ->
-            match n = (int nodes.[n].Hop) with
-            | true -> Some(fns.[n])
-            | false -> go (p + 1) (int nodes.[n].Hop) nodes.[n].Retry          
+            match nodes.[n].Instr with 
+            | Instr.Terminal ->
+                match fns.[int nodes.[n].Hop] with
+                | true,  fn -> go (p + 1) (n + 1) ((fn ())::acc)
+                | false, fn -> Some((fn ())::acc)
+            | _ -> go (p + 1) (int nodes.[n].Hop) acc        
         | false ->
-            match rt with
-            | 0uy -> None
-            | x -> go (p + 1) (int nodes.[n].Hop) (x - 1uy)
+            match nodes.[n].Instr with
+            | Instr.Retry -> go (p + 1) (n + 1) acc
+            | _ -> None
+    go 0 0 []
 
-    go 0 0 0uy
+/// Domain Types
+////////////////
+
+type PathExpr =
+| Route of string
+| Routef of StringFormat<_,_>
+| SubRoute of string
+
+type MatchChunk =
+| Token of string
+| Parse of char
+
+type PathType =
+| Path of string
+| Match of MatchChunk list * (obj -> HttpHandler)
+| PathRoute of string * HttpHandler * RouteNode
+| MatchRoute of MatchChunk list * (obj -> HttpHandler) * RouteNode
+
+and PathNode(pathType:PathType) =
+    let pathType = pathType
+    member __.BindFn (h:HttpHandler) =
+        ()
+
+and RouteNode(preFn:HttpHandler) =
+    let preFn = preFn
+    let mutable routes = []
+    member __.Routes
+        with get() = routes
+        and set v = routes <- v
+    static member (>=>) (h:HttpHandler) (n:RouteNode) =
+        (h,n)
+
+and routeBase() =
+    
+    let aryNodes = Array.zeroCreate<AryNode>(0)
+    let fnNodes = Array.zeroCreate<HttpHandler>(0)
+    // traverse the tree and map the functions to arrays
+    member __.ProcessTree (h:HttpHandler,n:RouteNode) =
+        // processing of entire route tree here
+        ()
+    static member (>=>) (b:RouteBase) (hr:HttpHandler * RouteNode) =
+        b.ProcessTree hr
+    static member (>=>) (h:HttpHandler) (b:RouteBase) =
+        fun (ctx : HttpContext) ->
+            runPath aryNodes fnNodes ctx.Request.Path.Value ctx
+            
+let webapi = 
+    routeBase >=> 
+        RouteNode [
+            PathNode "/about" >=> 
+                authenticationHandler >=> 
+                    RouteNode [ 
+                        PathNode "/auth" >=> text "you are authenticated"
+                    ]
+]
