@@ -8,7 +8,7 @@ open FSharp.Core.Printf
 open System.Collections.Generic
 open Microsoft.FSharp.Reflection
 //open Giraffe.AsyncTask
-open Giraffe.ValueTask
+open Giraffe.Task
 open Giraffe.HttpHandlers
 open HttpRouter.RouterParsers
 
@@ -287,19 +287,20 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
     let rec checkCompletionPath (pos:int) (node:Node) = // this funciton is only used by parser paths
         //this function doesn't test array bounds as all callers do so before
         if commonPathIndex path pos node.Token = node.Token.Length then
-            if (pos + node.Token.Length) = last then //if this pattern match shares node chain as substring of another
+            let nxtChar = pos + node.Token.Length
+            if (nxtChar - 1) = last then //if this pattern match shares node chain as substring of another
                 if node.EndFns.IsEmpty
                 then pos, None
-                else pos + node.Token.Length, Some node
+                else nxtChar, Some node
             else
-                match node.TryGetValue path.[pos + node.Token.Length - 1] with
+                match node.TryGetValue path.[nxtChar] with
                 | true, cnode ->
-                    checkCompletionPath (pos + node.Token.Length) cnode
+                    checkCompletionPath nxtChar cnode
                 | false, _ ->
                     // no further nodes, either a static url didnt match or there is a pattern match required            
                     if node.MidFns.IsEmpty
                     then pos, None
-                    else pos + node.Token.Length, Some node
+                    else nxtChar, Some node
         else pos, None
     
     /// (next match chars,pos,match completion node) -> (parse end,pos skip completed node,skip completed node) option
@@ -340,7 +341,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
 
     let rec processEnd (fns:EndCont list) pos args =
         match fns with
-        | [] -> ValueTask<_> None
+        | [] -> Task.FromResult None
         | h :: t ->
             match h with                    
             | HandlerMap fn -> fn ctx // run function with all parameters
@@ -358,7 +359,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
             | Some (fpos,npos,cnode) ->
                 match formatStringMap.[f] path pos fpos with
                 | Some o -> 
-                    if npos = last then //if have reached end of path through nodes, run HandlerFn
+                    if npos - 1 = last then //if have reached end of path through nodes, run HandlerFn
                         processEnd cnode.EndFns npos (o::acc)
                     else
                         processMid cnode.MidFns npos (o::acc)
@@ -366,7 +367,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
             | None -> processMid tail pos acc // subsequent match could not complete so fail
         
         match fns with
-        | [] -> ValueTask<_> None
+        | [] -> Task.FromResult None
         | h :: t ->
             match h with
             | ApplyMatch x -> applyMatch x pos args t
@@ -378,22 +379,22 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
     let rec crawl (pos:int) (node:Node) =
         let cp = commonPathIndex path pos node.Token 
         if cp = node.Token.Length then
-            if (pos + node.Token.Length - 1 ) = last then //if have reached end of path through nodes, run HandlerFn
+            let nxtChar = pos + node.Token.Length 
+            if (nxtChar - 1 ) = last then //if have reached end of path through nodes, run HandlerFn
                 processEnd node.EndFns pos []
             else
-                match node.TryGetValue path.[pos + node.Token.Length ] with
+                match node.TryGetValue path.[nxtChar] with
                 | true, cnode ->
                     if (pos + cnode.Token.Length ) = last then //if have reached end of path through nodes, run HandlerFn
                         processEnd cnode.EndFns (pos + node.Token.Length) []
                     else                //need to continue down chain till get to end of path
-                        crawl (pos + node.Token.Length ) cnode
+                        crawl (nxtChar) cnode
                 | false, _ ->
                     // no further nodes, either a static url didnt match or there is a pattern match required            
-                    let npos = pos + node.Token.Length
-                    processMid node.MidFns (npos) []
+                    processMid node.MidFns nxtChar []
         else 
             printfn ">> failed to match %s path with %s token, commonPath=%i" (path.Substring(pos)) (node.Token) (commonPathIndex path pos node.Token)
-            ValueTask<_> None            
+            Task.FromResult None            
 
     crawl ipos root
 
