@@ -1,10 +1,16 @@
 module Giraffe.HttpRouter
 
+open System.Threading.Tasks
 open Giraffe.HttpHandlers
 open FSharp.Core.Printf
 open System.Collections.Generic
-open HashDepot
 
+type HttpContext = unit
+
+type Continuation = HttpContext -> Task<HttpContext>
+
+//result of any handler
+type HttpHandler = HttpContext -> Task<HttpContext>
 
 let modmatch (ca: char []) =
     let result = Array.zeroCreate<int>(ca.Length)
@@ -242,14 +248,20 @@ let runPath (nodes:AryNode []) (fns:(bool*(unit->string)) []) (path:string) (ctx
 /// Domain Types
 ////////////////
 
+type PathChunk =
+| Token of string
+| Parse of char
+
+type IRoute =
+    abstract member Path : PathChunk List
+    abstract member Fn : HttpHandler
+
 type PathExpr =
 | Route of string
 | Routef of StringFormat<_,_>
 | SubRoute of string
 
-type MatchChunk =
-| Token of string
-| Parse of char
+let handler : HttpHandler = Task.FromResult
 
 type PathType =
 | Path of string
@@ -257,9 +269,19 @@ type PathType =
 | PathRoute of string * HttpHandler * RouteNode
 | MatchRoute of MatchChunk list * (obj -> HttpHandler) * RouteNode
 
-and PathNode(pathType:PathType) =
-    let pathType = pathType
-    member __.BindFn (h:HttpHandler) =
+
+and PathNode() =
+    
+    member __.BindPath (path:string,h:HttpHandler) =
+        ()
+
+    member __.BindPath (path:string,hn:HttpHandler*RouteNode) =
+        ()
+
+    member __.BindParse<'U,'T> (path:StringFormat<'U,'T>,h:('T -> HttpHandler)) =
+        ()
+
+    member __.BindParse<'U,'T> (path:StringFormat<'U,'T>,h:('T -> HttpHandler)*RouteNode) =
         ()
 
 and RouteNode(preFn:HttpHandler) =
@@ -284,7 +306,10 @@ and routeBase() =
     static member (>=>) (h:HttpHandler) (b:RouteBase) =
         fun (ctx : HttpContext) ->
             runPath aryNodes fnNodes ctx.Request.Path.Value ctx
-            
+
+let inline route (path:string) (tail:'T) = 
+    let pn = PathNode()
+    pn.BindPath (path, tail)
 let webapi = 
     routeBase >=> 
         RouteNode [
@@ -294,3 +319,54 @@ let webapi =
                         PathNode "/auth" >=> text "you are authenticated"
                     ]
 ]
+
+
+
+// [<Struct>]
+// type State = {
+//     mutable succ : Continuation
+//     mutable fail : Continuation
+//     ctx : HttpContext
+//     }
+
+// type State2 = 
+//     struct
+//         val mutable succ : Continuation []
+//         val mutable succPos : int
+//         val mutable fail : Continuation []
+//         val mutable failPos : int
+//         val ctx : HttpContext
+//         member x.Succ
+//             with get() = 
+//                 match x.succPos with 
+//                 | -1 -> x.succ.[0] x.ctx 
+//                 | _ ->
+//                     x.succPos <- x.succPos - 1
+//                     x.succ.[x.succPos] x.ctx
+
+//         member x.Fail
+//             with get() = 
+//                 match x.failPos with 
+//                 | -1 -> x.fail.[0] x.ctx 
+//                 | _ ->
+//                     x.succPos <- x.succPos - 1
+//                     x.succ.[x.succPos] x.ctx
+                
+//         new(ictx) = { ctx = ictx ; succ = Unchecked.defaultof<Continuation> ; fail = Unchecked.defaultof<Continuation> }
+//     end
+
+// let state = {
+//     succ=Unchecked.defaultof<Continuation>;
+//     fail=Unchecked.defaultof<Continuation>;
+//     ctx=Unchecked.defaultof<HttpContext>
+//     }
+
+// let State2 = State2(Unchecked.defaultof<HttpContext>)
+
+// let (>=>) (a:Continuation) (b:Continuation) = 
+//     fun (s:State2) -> 
+//         let s2 = State2(ctx)
+//         s2.succ <- s.succ
+//         s.succ <- b
+
+
