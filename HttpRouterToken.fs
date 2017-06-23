@@ -185,12 +185,12 @@ and ContType =
 ////////////////////////////////////////////////////
 
 // Bindy is a hack to encapsulate type inferance application in node trie of multiple types, partially applied functions fail
-type Bindy() =
-    member x.EatMe<'U,'T> (sf:StringFormat<'U,'T>) (fn : 'T -> HttpHandler) (v2:obj) = v2 :?> 'T |> fn
+// type Bindy() =
+//     member x.EatMe<'U,'T> (sf:StringFormat<'U,'T>) (fn : 'T -> HttpHandler) (v2:obj) = v2 :?> 'T |> fn
 
-let inline bindMe (sf:StringFormat<'U,'T>) (fn : 'T -> HttpHandler) = 
-    let b = Bindy()
-    b.EatMe<'U,'T> sf fn
+// let inline bindMe (sf:StringFormat<'U,'T>) (fn : 'T -> HttpHandler) = 
+//     let b = Bindy()
+//     b.EatMe<'U,'T> sf fn
 
 // temporary compose out handler to allow composition out of route functions, same as wraping in () or using <|
 let inline (==>) (a:HttpHandler -> Node -> Node) (b:HttpHandler) = a b
@@ -246,7 +246,7 @@ let routeTf (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node)=
             if pcount = 0 then
                 failwith "'routef' (route Parse) used with no arguments? please add % format args or change to simple 'route' for non-parse routes"
             else
-                Node.AddPath node (path.Value -| ts) (MatchComplete( pcount , bindMe path fn ) |> End)              
+                Node.AddPath node (path.Value -| ts) (MatchComplete( pcount , fun(o:obj) -> (o :?> 'T) |> fn ) |> End)              
         else 
             let fmtChar = path.Value.[pl + 1]
             // overrided %% -> % case

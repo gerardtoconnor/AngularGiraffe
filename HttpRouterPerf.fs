@@ -4,6 +4,7 @@ open System.Threading.Tasks
 open Giraffe.HttpHandlers
 open FSharp.Core.Printf
 open System.Collections.Generic
+open HttpRouter.RouterParsers
 
 type HttpContext = unit
 
@@ -147,12 +148,53 @@ let runPath (nodes:AryNode []) (fns:(bool*(unit->string)) []) (path:string) (ctx
             | _ -> None
     go 0 0 []
 
+type PathChunk =
+| Token of string
+| Parse of (string -> int -> int -> obj option)
+
+type PathType =
+| Path of string * HttpHandler
+| SubRoute of string * HttpHandler
+| Match of PathChunk list * (obj -> HttpHandler)
+
+
+let route (path:string) (fn:HttpHandler) = Path (path,fn)
+
+let subRoute (path:string) (fn:HttpHandler) = SubRoute (path,fn)
+
+let routef (fmt:StringFormat<'U,'T>) (fn:'T -> HttpHandler) =
+    let path = fmt.Value
+    let last = path.Length - 1
+
+    let rec go i acc =
+        let n = path.IndexOf('%',i)     // get index of next '%'
+        if n = -1 || n = last then
+            // non-parse case & end
+            Token( path.Substring(i,n - i) ) :: acc
+        else
+            let fmtc = path.[n + 1]
+            if fmtc = '%' then 
+                go (n + 2) (Token( path.Substring(i,n - i) ) :: acc)
+            else 
+                match formatStringMap.TryGet fmtc with
+                | false, prs ->
+                    failwith <| sprintf "Invalid parse char in path %s, pos: %i, char: %c" path n fmtc
+                | true , prs ->
+                    go (n + 2) (Parse(prs)::acc)
+    
+    let fnCast = fun (o:obj) -> (o :?> 'T) |> fn 
+    Match(go 0 [], fnCast) 
+                
+            
+            
+
+
 /// Domain Types
 ////////////////
 
-type PathChunk =
-| Token of string
-| Parse of char
+
+
+
 
 type IRoute =
     abstract member Path : PathChunk List
@@ -186,8 +228,7 @@ and PathNode() =
     member __.BindParse<'U,'T> (path:StringFormat<'U,'T>,h:('T -> HttpHandler)*RouteNode) =
         ()
 
-and RouteNode(preFn:HttpHandler) =
-    let preFn = preFn
+and RouteNode(pnl : PathNode list) =
     let mutable routes = []
     member __.Routes
         with get() = routes
@@ -213,7 +254,7 @@ let inline route (path:string) (tail:'T) =
     let pn = PathNode()
     pn.BindPath (path, tail)
 let webapi = 
-    routeBase >=> 
+    routeBase() >=> 
         RouteNode [
             PathNode "/about" >=> 
                 authenticationHandler >=> 
