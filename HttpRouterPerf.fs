@@ -1,17 +1,29 @@
 module Giraffe.HttpRouter
 
 open System.Threading.Tasks
+open Giraffe.Task
 open Giraffe.HttpHandlers
 open FSharp.Core.Printf
 open System.Collections.Generic
 open HttpRouter.RouterParsers
 
-type HttpContext = unit
+type HttpContext() = 
+    class end
 
 type Continuation = HttpContext -> Task<HttpContext>
 
 //result of any handler
-type HttpHandler = HttpContext -> Task<HttpContext>
+type HttpHandler = HttpContext -> Task<HttpContext option>
+
+let inline (>=>) (a:HttpHandler) (b:HttpHandler) : HttpHandler =
+    fun ctx ->
+        task {
+            let! ctxo = a ctx
+            match ctxo with
+            | Some ctx -> return! b ctx
+            | None -> return None
+        }
+
 
 let modmatch (ca: char []) =
     let result = Array.zeroCreate<int>(ca.Length)
@@ -65,61 +77,6 @@ type INodeType =
 | MatchCompleteFn = 5uy
 // performance Node Trie
 
-let inline intIn x l u = (x - l) * (u - x) >= 0
-
-//#time
-let path = "/test/cats/dogs" //6 -> 9
-let sting = "cats"
-let start = 6
-
-let mutable result = 0
-
-for i in 1 .. 100000000 do
-    if System.String.CompareOrdinal(path,start,sting,0,sting.Length) = 0  then
-        result <- result + 1
-printfn "result is %i" result
-
-let rec go i =  
-    let rec word j k =
-        if k < sting.Length  then //&& j < path.Length
-            if path.[j] = sting.[k] then
-                //printfn "pos %i matching %c" k sting.[k] 
-                word (j+1) (k+1)
-            else
-                //printfn "failed at pos %i matching %c" k sting.[k]
-                false
-        else
-            //printfn "matching complete at pos %i" k
-            true
-    if i > 0 then
-        if word start 0 then
-            result <- result + 1
-        go (i - 1)
-    else
-        printfn "result is %i" result                
-
-go 100000000
-
-
-let testAry = [|'i';'t';'b';'q';|]
-
-let node = TNode(testAry,INodeType.EmptyNode)
-node.Edges.[0] <- Unchecked.defaultof<TNode>
-node.Token <- "imToken"
-
-let result = modmatch testAry
-
-let paths = [|
-    "/"
-    "/test"
-    "/about"
-|]
-
-let work =
-    paths
-    |> Array.map 
-        (fun path -> path.ToCharArray() |> List.ofArray)
-
 type Instr =
 | Hop = 0uy
 | Retry = 1uy
@@ -157,7 +114,6 @@ type PathType =
 | SubRoute of string * HttpHandler
 | Match of PathChunk list * (obj -> HttpHandler)
 
-
 let route (path:string) (fn:HttpHandler) = Path (path,fn)
 
 let subRoute (path:string) (fn:HttpHandler) = SubRoute (path,fn)
@@ -184,35 +140,28 @@ let routef (fmt:StringFormat<'U,'T>) (fn:'T -> HttpHandler) =
     
     let fnCast = fun (o:obj) -> (o :?> 'T) |> fn 
     Match(go 0 [], fnCast) 
-                
-            
-            
-
 
 /// Domain Types
 ////////////////
 
-
-
-
-
 type IRoute =
     abstract member Path : PathChunk List
     abstract member Fn : HttpHandler
+
+let handler : HttpHandler = Some >> Task.FromResult 
 
 type PathExpr =
 | Route of string
 | Routef of StringFormat<_,_>
 | SubRoute of string
 
-let handler : HttpHandler = Task.FromResult
 
-type PathType =
-| Path of string
+type PathType2 =
+| Path of string * HttpHandler
 | Match of MatchChunk list * (obj -> HttpHandler)
 | PathRoute of string * HttpHandler * RouteNode
 | MatchRoute of MatchChunk list * (obj -> HttpHandler) * RouteNode
-
+with static member (>=>) (pe:PathExpr) ()
 
 and PathNode() =
     
@@ -253,17 +202,38 @@ and routeBase() =
 let inline route (path:string) (tail:'T) = 
     let pn = PathNode()
     pn.BindPath (path, tail)
-let webapi = 
-    routeBase() >=> 
-        RouteNode [
-            PathNode "/about" >=> 
-                authenticationHandler >=> 
-                    RouteNode [ 
-                        PathNode "/auth" >=> text "you are authenticated"
-                    ]
-]
+
+let (>=|) (h:HttpHandler) (ls:PathNode list) =
+    (h,ls)
+
+// let webapi = 
+//     routeBase()  // where array builder starts, it needs to recieve other nodes some how
+//         >=> // this needs to be overriden to deliver node to rbase ??
+//         RouteNode [ // this needs to get a collection of paths that can later be parsed incl child nodes
+//             PathNode "/about" >=> // having immeadiatly after may not work as fn/case needs httphandler to pack (as well as child nodes!?)
+//                 authenticationHandler >=> // looks like normal binding but how can node be handed back!?
+//                     RouteNode [ 
+//                         PathNode "/auth" >=> text "you are authenticated"
+//                     ]
+// ]
+
+let webapp = 
+    GET >=| [
+        route "/about" >=> text "about"
+        route "/auth"  >=> 
+            choose [
+                AuthHandler >=| [
+                    path "/authorised user" >=> text "/authorised user"
+                    path "/authorised manger" >=> text "/authorised manger"
+                ]
+                UnAuthHandler >=> text "You are not authorised"
+            ]
+        route "/other" >=> text "other"
+    ]
 
 
+//((cts |> fn arg1) |> fn arg2)  
+//hndl
 
 // [<Struct>]
 // type State = {
