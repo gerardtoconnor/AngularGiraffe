@@ -260,7 +260,7 @@ let routeTf (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node)=
                     if node.MidFns |> List.exists (function | ApplyMatchAndComplete(c,_,_) -> fmtChar = c | _ -> false )
                     then sprintf "duplicate paths detected '%s', Trie Build skipping..." path.Value |> failwith
                     else
-                        Node.AddPath node (path.Value.Substring(ts,pl - ts)) (ApplyMatchAndComplete( fmtChar , pcount + 1 , bindMe path fn ) |> Mid)
+                        Node.AddPath node (path.Value.Substring(ts,pl - ts)) (ApplyMatchAndComplete( fmtChar , pcount + 1 , (fun (o:obj) -> o :?> 'T |> fn )) |> Mid)
                 else //otherwise add mid pattern parse apply
                     //get node this parser will be on
                     let nnode = Node.AddPath node (path.Value.Substring(ts,pl - ts)) Empty
@@ -276,6 +276,7 @@ let routeTf (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node)=
 
 // choose root will apply its root node to all route mapping functions to generate Trie at compile time, function produced will take routeState (path) and execute appropriate function
 
+
 // process path fn that returns httpHandler
 let private processPath (rs:RouteState) (root:Node) : HttpHandler =
     fun (ctx:HttpContext) -> //(succ:Continuation) (fail:Continuation)
@@ -283,15 +284,18 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
     let path : string = rs.path
     let ipos = rs.pos
     let last = path.Length - 1
-    
+
     let rec checkCompletionPath (pos:int) (node:Node) = // this funciton is only used by parser paths
         //this function doesn't test array bounds as all callers do so before
+        let success(pos,node) = struct (true,pos,node)
+        let failure(pos)      = struct (false,pos,Unchecked.defaultof<Node)
+
         if commonPathIndex path pos node.Token = node.Token.Length then
             let nxtChar = pos + node.Token.Length
             if (nxtChar - 1) = last then //if this pattern match shares node chain as substring of another
                 if node.EndFns.IsEmpty
-                then pos, None
-                else nxtChar, Some node
+                then failure pos //pos, None
+                else success nxtChar node //nxtChar, Some node
             else
                 match node.TryGetValue path.[nxtChar] with
                 | true, cnode ->
@@ -299,18 +303,21 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
                 | false, _ ->
                     // no further nodes, either a static url didnt match or there is a pattern match required            
                     if node.MidFns.IsEmpty
-                    then pos, None
-                    else nxtChar, Some node
-        else pos, None
+                    then failure pos
+                    else success nxtChar node
+        else failure pos
     
     /// (next match chars,pos,match completion node) -> (parse end,pos skip completed node,skip completed node) option
     let rec getNodeCompletion (cs:char []) pos (node:Node) =
+        let success(prend,nxtpos,nxtnode) = struct (true,prend,nxtpos,nxtnode)
+        let failure                       = struct (false,0,0,Unchecked.defaultof<Node>)
+
         match path.IndexOfAny(cs,pos) with // jump to next char ending (possible instr optimize vs node +1 crawl) 
-        | -1 -> None
+        | -1 -> failure
         | x1 -> //x1 represents position of match close char but rest of chain must be confirmed 
             match checkCompletionPath x1 node with
-            | x2,Some cn -> Some(x1 - 1,x2,cn)                 // from where char found to end of node chain complete
-            | x2,None   ->  getNodeCompletion cs (x1 + 1) node // char foundpart of match, not completion string
+            | true,x2,cn -> success(x1 - 1,x2,cn)                 // from where char found to end of node chain complete
+            | false,x2,_ -> getNodeCompletion cs (x1 + 1) node // char foundpart of match, not completion string
 
     let createResult (args:obj list) (argCount:int) (fn:obj -> HttpHandler) =
         let input =  
@@ -318,8 +325,8 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
             | 0 -> Unchecked.defaultof<obj> //HACK: need routeF to throw error on zero args
             | 1 -> args.Head // HACK: look into performant way to safely extract
             | _ ->
-                let values = Array.zeroCreate<obj>(argCount)
-                let valuesTypes = Array.zeroCreate<System.Type>(argCount)
+                let values = Array.zeroCreate<obj>(argCount) //<<< this can be pooled?
+                let valuesTypes = Array.zeroCreate<System.Type>(argCount) //<<< this should be cached with handler
                 let rec revmap ls i = // List.rev |> List.toArray not used to minimise list traversal
                     if i < 0 then ()
                     else
@@ -351,20 +358,20 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
         
         let applyMatchAndComplete pos acc ( f,i,fn ) tail =
             match formatStringMap.[f] path pos last with
-            | Some o -> createResult (o :: acc) i fn
-            | None -> processMid tail pos acc // ??????????????????
+            | true, o -> createResult (o :: acc) i fn
+            | false,_ -> processMid tail pos acc // ??????????????????
         
         let rec applyMatch (f:char,ca:char[],n) pos acc tail  =
             match getNodeCompletion ca pos n with
-            | Some (fpos,npos,cnode) ->
+            | struct(true,fpos,npos,cnode) ->
                 match formatStringMap.[f] path pos fpos with
-                | Some o -> 
+                | true, o -> 
                     if npos - 1 = last then //if have reached end of path through nodes, run HandlerFn
                         processEnd cnode.EndFns npos (o::acc)
                     else
                         processMid cnode.MidFns npos (o::acc)
-                | None -> processMid tail pos acc // keep trying    
-            | None -> processMid tail pos acc // subsequent match could not complete so fail
+                | false,_ -> processMid tail pos acc // keep trying    
+            | struct(false,_,_,_) -> processMid tail pos acc // subsequent match could not complete so fail
         
         match fns with
         | [] -> Task.FromResult None
