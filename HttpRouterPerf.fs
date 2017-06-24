@@ -5,17 +5,17 @@ open Giraffe.Task
 open Giraffe.HttpHandlers
 open FSharp.Core.Printf
 open System.Collections.Generic
-open HttpRouter.RouterParsers
+open Giraffe.HttpRouter.RouterParsers
 
 type HttpContext() = 
     class end
 
-type Continuation = HttpContext -> Task<HttpContext>
+//type Continuation = HttpContext -> Task<HttpContext>
 
 //result of any handler
 type HttpHandler = HttpContext -> Task<HttpContext option>
 
-let inline (>=>) (a:HttpHandler) (b:HttpHandler) : HttpHandler =
+let compose (a:HttpHandler) (b:HttpHandler) : HttpHandler =
     fun ctx ->
         task {
             let! ctxo = a ctx
@@ -23,6 +23,9 @@ let inline (>=>) (a:HttpHandler) (b:HttpHandler) : HttpHandler =
             | Some ctx -> return! b ctx
             | None -> return None
         }
+
+let (>=>) = compose 
+
 
 
 let modmatch (ca: char []) =
@@ -75,7 +78,9 @@ type INodeType =
 | SubRouteFn = 3uy
 | ApplyMatchFn = 4uy
 | MatchCompleteFn = 5uy
+
 // performance Node Trie
+////////////////////////
 
 type Instr =
 | Next = 0uy        // if match, move to next
@@ -123,6 +128,27 @@ let route (path:string) (fn:HttpHandler) = Path (path,fn)
 
 let subRoute (path:string) (fn:HttpHandler) = SubRoute (path,fn)
 
+let formatToChucks (fmt:StringFormat<'U,'T>) =
+    let path = fmt.Value
+    let last = path.Length - 1
+
+    let rec go i acc =
+        let n = path.IndexOf('%',i)     // get index of next '%'
+        if n = -1 || n = last then
+            // non-parse case & end
+            Token( path.Substring(i,n - i) ) :: acc
+        else
+            let fmtc = path.[n + 1]
+            if fmtc = '%' then 
+                go (n + 2) (Token( path.Substring(i,n - i) ) :: acc)
+            else 
+                match formatStringMap.TryGet fmtc with
+                | false, prs ->
+                    failwith <| sprintf "Invalid parse char in path %s, pos: %i, char: %c" path n fmtc
+                | true , prs ->
+                    go (n + 2) (Parse(prs)::acc)
+    go 0 [] 
+
 let routef (fmt:StringFormat<'U,'T>) (fn:'T -> HttpHandler) =
     let path = fmt.Value
     let last = path.Length - 1
@@ -155,32 +181,42 @@ type IRoute =
 
 let handler : HttpHandler = Some >> Task.FromResult 
 
-type PathExpr =
+type PathExpr<'U,'T> =
 | Route of string
-| Routef of StringFormat<_,_>
+| Routef of StringFormat<'U,'T>
 | SubRoute of string
 
+type HandlerMap =
+| Handle of HttpHandler
+| Handlef of (obj -> HttpHandler)
 
-type PathType2 =
-| Path of string * HttpHandler
-| Match of MatchChunk list * (obj -> HttpHandler)
-| PathRoute of string * HttpHandler * RouteNode
-| MatchRoute of MatchChunk list * (obj -> HttpHandler) * RouteNode
-with static member (>=>) (pe:PathExpr) ()
+type PathNode(pe : PathExpr<_,'T>) =
+    let chunks =
+        match pe with
+        | Route path -> [Token path]
+        | Routef sf -> formatToChucks sf
+        | SubRoute path -> [Token path]
 
-and PathNode() =
-    
-    member __.BindPath (path:string,h:HttpHandler) =
-        ()
-
-    member __.BindPath (path:string,hn:HttpHandler*RouteNode) =
-        ()
-
-    member __.BindParse<'U,'T> (path:StringFormat<'U,'T>,h:('T -> HttpHandler)) =
-        ()
-
-    member __.BindParse<'U,'T> (path:StringFormat<'U,'T>,h:('T -> HttpHandler)*RouteNode) =
-        ()
+    member val Chunks = chunks with get
+    member val ChildRoute = None with get,set
+    member val Binder = Unchecked.defaultof<HandlerMap> with get,set 
+    member x.Bind (h:HttpHandler) = x.Binder <- Handle h
+    member x.Bindf (hf:'T -> HttpHandler) = x.Binder <- Handlef (fun (o:obj) -> o:?> 'T |> hf)
+    // overloads
+    static member (==>) (pn:PathNode,h:HttpHandler) = 
+        pn.Bind h
+        pn
+    static member (>=>) (pn:PathNode) (hf:'T -> HttpHandler) = 
+        pn.Bindf hf
+        pn
+    static member (>=>) (pn:PathNode) ((h,rn):HttpHandler*RouteNode) = 
+        pn.Bind h
+        pn.ChildRoute <- Some rn
+        pn
+    static member (>=>) (pn:PathNode) ((hf,rn):('T -> HttpHandler)*RouteNode) = 
+        pn.Bindf hf
+        pn.ChildRoute <- Some rn
+        pn
 
 and RouteNode(pnl : PathNode list) =
     let mutable routes = []
@@ -190,7 +226,7 @@ and RouteNode(pnl : PathNode list) =
     static member (>=>) (h:HttpHandler) (n:RouteNode) =
         (h,n)
 
-and routeBase() =
+and routeBase(paths: PathNode list) =
     
     let aryNodes = Array.zeroCreate<AryNode>(0)
     let fnNodes = Array.zeroCreate<HttpHandler>(0)
@@ -198,15 +234,13 @@ and routeBase() =
     member __.ProcessTree (h:HttpHandler,n:RouteNode) =
         // processing of entire route tree here
         ()
-    static member (>=>) (b:RouteBase) (hr:HttpHandler * RouteNode) =
+    static member (>=>) (b:routeBase) (hr:HttpHandler * RouteNode) =
         b.ProcessTree hr
-    static member (>=>) (h:HttpHandler) (b:RouteBase) =
+    static member (>=>) (h:HttpHandler) (b:routeBase) =
         fun (ctx : HttpContext) ->
             runPath aryNodes fnNodes ctx.Request.Path.Value ctx
 
-let inline route (path:string) (tail:'T) = 
-    let pn = PathNode()
-    pn.BindPath (path, tail)
+let inline route (path:string) = PathNode(Route path)
 
 let (>=|) (h:HttpHandler) (ls:PathNode list) =
     (h,ls)
@@ -222,18 +256,26 @@ let (>=|) (h:HttpHandler) (ls:PathNode list) =
 //                     ]
 // ]
 
-let webapp = 
-    GET >=| [
-        route "/about" >=> text "about"
-        route "/auth"  >=> 
-            choose [
-                AuthHandler >=| [
-                    path "/authorised user" >=> text "/authorised user"
-                    path "/authorised manger" >=> text "/authorised manger"
-                ]
-                UnAuthHandler >=> text "You are not authorised"
-            ]
-        route "/other" >=> text "other"
+let text v = fun (ctx:HttpContext) -> ctx |> Some |> Task.FromResult 
+
+let pn = route "/about"
+
+let pn2 = pn ==> text "about"
+
+let webapp = routeBase [
+                route "/about" ==> text "about" ==> text "again"
+                route "/auth"  >=> 
+                    RouteNode [
+
+                                ]
+                    // choose [
+                    //     AuthHandler >=| [
+                    //         path "/authorised user" >=> text "/authorised user"
+                    //         path "/authorised manger" >=> text "/authorised manger"
+                    //     ]
+                    //     UnAuthHandler >=> text "You are not authorised"
+                    // ]
+                route "/other" >=> text "other"
     ]
 
 
