@@ -2,13 +2,14 @@ module HttpRouter.RouterParsers
 
 //between inclusive
 
-let inline intIn x l u = (x - l) * (u - x) >= 0
+/// between (value) (lowerbound) (upperbound) inclusive
+let inline between x l u = (x - l) * (u - x) >= LanguagePrimitives.GenericZero
 
-let inline int64In x l u = (x - l) * (u - x) >= 0L
+// let inline int64In x l u = (x - l) * (u - x) >= 0L
 
-let inline floatIn x l u = (x - l) * (u - x) >= 0.
+// let inline floatIn x l u = (x - l) * (u - x) >= 0.
 
-let inline byteIn x l u = (x - l) * (u - x) >= 0uy
+// let inline byteIn x l u = (x - l) * (u - x) >= 0uy
 
 /// Private Range Parsers that quickly try parse over matched range (all fpos checked before running in preceeding functions)
 
@@ -17,7 +18,7 @@ let private stringParse (path:string) ipos fpos = path.Substring(ipos,fpos - ipo
 let private  charParse (path:string) ipos _ = path.[ipos] |> box |> Some // this is not ideal method (but uncommonly used)
 
 let private boolParse (path:string) ipos fpos =
-    if intIn (fpos - ipos) 4 5 then 
+    if between (fpos - ipos) 4 5 then 
         match path.[ipos] with
         | 't' | 'T' -> true  |> box |> Some // todo: Laxy matching, i'll complete later
         | 'f' | 'F' -> false |> box |> Some
@@ -30,7 +31,7 @@ let private intParse (path:string) ipos fpos =
     let mutable negNumber = false
     let rec go pos =
         let charDiff = int path.[pos] - int '0'
-        if intIn charDiff 0 9 then
+        if between charDiff 0 9 then
             result <- (result * 10) + charDiff
             if pos = fpos then
                 if negNumber then - result else result 
@@ -49,7 +50,7 @@ let private int64Parse (path:string) ipos fpos =
     let mutable negNumber = false
     let rec go pos =
         let charDiff = int64 path.[pos] - int64 '0'
-        if int64In charDiff 0L 9L then
+        if between charDiff 0L 9L then
             result <- (result * 10L) + charDiff
             if pos = fpos then
                 if negNumber then - result else result 
@@ -77,7 +78,7 @@ let floatParse (path:string) ipos fpos =
             if pos < fpos then go (pos + 1) else None
         else
             let charDiff = float path.[pos] - float '0'
-            if floatIn charDiff 0. 9. then
+            if between charDiff 0. 9. then
                 if decPlaces = 0 then 
                     result <- (result * 10.) + charDiff
                 else
@@ -109,7 +110,7 @@ let floatParse2 (path:string) ipos fpos =
             if pos < fpos then go (pos + 1) else None
         else
             let charDiff = int path.[pos] - int '0'
-            if intIn charDiff 0 9 then
+            if between charDiff 0 9 then
                 if decPlaces = 0 then 
                     nominator <- (nominator * 10L) + int64 charDiff
                 else

@@ -78,9 +78,14 @@ type INodeType =
 // performance Node Trie
 
 type Instr =
-| Hop = 0uy
-| Retry = 1uy
-| Terminal = 2uy     
+| Next = 0uy        // if match, move to next
+| Hop = 1uy         // if match, hop to node at HOP val ?? needed?
+| Retry = 2uy       // when matching multiple routes, if matched, jump to HOP, else cont to next node
+| FnContinue = 3uy  // a partial match/subroute that allows matching to cont (move next) while fns pulled
+| FnFinish = 4uy    // ending function that requires no further matching, get fn and go
+| FnFinishOrRetry = 5uy  // where at last, FnFinish, otherwise Retry eg '/' , '/about/ -> '/' has both functionality
+| FnContOrFinish = 6uy   // where at last, FnFinish, otherwise FnCont eg '/a%s' , '/a%s/b -> 'a' has both functions, need to test partial first
+
 
 [<Struct>]
 type AryNode =
