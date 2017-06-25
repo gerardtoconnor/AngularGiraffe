@@ -91,6 +91,7 @@ type Instr =
 | FnFinish = 4uy    // ending function that requires no further matching, get fn and go
 | FnFinishOrRetry = 5uy  // where at last, FnFinish, otherwise Retry eg '/' , '/about/ -> '/' has both functionality
 | FnContOrFinish = 6uy   // where at last, FnFinish, otherwise FnCont eg '/a%s' , '/a%s/b -> 'a' has both functions, need to test partial first
+| NOP = 100uy 
 
 type HandleFn =
 | HandleFn      of HttpHandler      // plain handler 
@@ -170,7 +171,7 @@ let router (paths: PathNode list) =
     let fns = ResizeArray<HandleFn>()
     
 
-    let placeholder (c:char) = AryNode(c,0,Instr.Next)
+    let placeholder (c:char) = AryNode(c,0,Instr.NOP)
     // let aryNodes = Array.zeroCreate<AryNode>(0)
     // let fnNodes = Array.zeroCreate<HttpHandler>(0)
     // traverse the tree and map the functions to arrays
@@ -184,11 +185,11 @@ let router (paths: PathNode list) =
                 AryNode(byte(tk.Chars ti),i + 1, Instr.Next) // <<<<<<<<<<< not checked
         | Parse pr -> 
     
-    let rec branchesNeeded i ls acc =
+    let rec branchPlacehold ls =
         let processStr str =
             if str.Length > 0 
             then ary.Add (placeholder str.[0])
-                   branchesNeeded (i + 1) t (i + 1)
+                   branchPlacehold ls
             else failwith (sprintf "Invalid empty route format token %A" pcl)        
         
         match ls with
@@ -197,15 +198,9 @@ let router (paths: PathNode list) =
             match h.GetBinding() with
             | Handlef (pcl,_) ->
                 match pcl with
-                | (Token str) :: _ -> if str.Length > 0 
-                                      then ary.Add (placeholder str.[0])
-                                            branchesNeeded (i + 1) t (i + 1)
-                                      else failwith (sprintf "Invalid empty route format token %A" pcl)
+                | (Token str) :: _  -> processStr t
                 | _ -> failwith (sprintf "Invalid route format %A" pcl) 
-            | Handle  (str,_) -> if str.Length > 0
-                                 then ary.Add placeholder 
-                                        branchesNeeded (i + 1) t (i + 1)
-                                 else failwith (sprintf "Invalid empty route format token %A" 
+            | Handle  (str,_)       -> processStr t
 
     //for each set of branches set up a retry array
     let rec brancher i ls state =
@@ -219,20 +214,23 @@ let router (paths: PathNode list) =
                 | Parse prs -> () //todo: need figure out handling
             | Handle  (str,fn) -> if str.Length
             go t 
-    let rec go pls state =
-        // add branch placeholders
+    let rec go pls (state:(PathNode list) list) =
+        let ilen = ary.Count
+        branchPlacehold pls // add branch placeholders
+        
 
-    go paths []
+    go (Queue<PathNode list>())
 
+    //using now compiled arrays, provide handler to process path queries
     fun ctx ->
         runPath aryNodes fnNodes ctx.Request.Path.Value ctx        
 
 // handler functions
 let inline route (path:string) = PathNode(Route path)
 
-type Bindy() =
-    member x.EatMe<'U,'T> (sf:StringFormat<'U,'T>) (fn : 'T -> HttpHandler) (v2:obj) = v2 :?> 'T |> fn
-let bindy = Bindy()
+// type Bindy() =
+//     member x.EatMe<'U,'T> (sf:StringFormat<'U,'T>) (fn : 'T -> HttpHandler) (v2:obj) = v2 :?> 'T |> fn
+// let bindy = Bindy()
 
 let inline routef (fmt:StringFormat<'U,'T>) (fn:'T -> HttpHandler) =
     let path = fmt.Value
@@ -243,7 +241,7 @@ let inline routef (fmt:StringFormat<'U,'T>) (fn:'T -> HttpHandler) =
         if n = -1 || n = last then
             // non-parse case & end
             let tl = Token( path.Substring(i,n - i) ) :: acc
-            PathNode(Routef(tl,bindy.EatMe<'U,'T> fmt fn))       
+            PathNode(Routef(tl,(fun (o:obj) -> o :?> 'T |> fn)))       
         else
             let fmtc = path.[n + 1]
             if fmtc = '%' then 
