@@ -157,14 +157,26 @@ type PathNode(pe : PathExpr) =
         pn.ChildRoute <- rn
         pn
 
+type AryBuilder() =
+    let ary = ResizeArray<AryNode>()
+    let aryPos = 0
+    let fns = ResizeArray<HandleFn>()
+    let fnsPos = 0
+
+
 let router (paths: PathNode list) =
     
     let ary = ResizeArray<AryNode>()
     let fns = ResizeArray<HandleFn>()
-        
+    
+
+    let placeholder (c:char) = AryNode(c,0,Instr.Next)
     // let aryNodes = Array.zeroCreate<AryNode>(0)
     // let fnNodes = Array.zeroCreate<HttpHandler>(0)
     // traverse the tree and map the functions to arrays
+    let rec brancher i cl state =
+
+
     let rec tokenize i cl state =
         match cl with
         | Token tk ->
@@ -172,15 +184,43 @@ let router (paths: PathNode list) =
                 AryNode(byte(tk.Chars ti),i + 1, Instr.Next) // <<<<<<<<<<< not checked
         | Parse pr -> 
     
-    let rec go i ls state =
+    let rec branchesNeeded i ls acc =
+        let processStr str =
+            if str.Length > 0 
+            then ary.Add (placeholder str.[0])
+                   branchesNeeded (i + 1) t (i + 1)
+            else failwith (sprintf "Invalid empty route format token %A" pcl)        
+        
+        match ls with
+        | [] -> acc
+        | h :: t ->
+            match h.GetBinding() with
+            | Handlef (pcl,_) ->
+                match pcl with
+                | (Token str) :: _ -> if str.Length > 0 
+                                      then ary.Add (placeholder str.[0])
+                                            branchesNeeded (i + 1) t (i + 1)
+                                      else failwith (sprintf "Invalid empty route format token %A" pcl)
+                | _ -> failwith (sprintf "Invalid route format %A" pcl) 
+            | Handle  (str,_) -> if str.Length > 0
+                                 then ary.Add placeholder 
+                                        branchesNeeded (i + 1) t (i + 1)
+                                 else failwith (sprintf "Invalid empty route format token %A" 
+
+    //for each set of branches set up a retry array
+    let rec brancher i ls state =
         match ls with
         | [] -> ()
         | h :: t ->
             match h.GetBinding() with
             | Handlef (pcl,fn) ->
-            | Handle  (str,fn) ->
-
+                match pcl.head with
+                | Token str -> if str.Length > 0 then str.[0] else ()
+                | Parse prs -> () //todo: need figure out handling
+            | Handle  (str,fn) -> if str.Length
             go t 
+    let rec go pls state =
+        // add branch placeholders
 
     go paths []
 
