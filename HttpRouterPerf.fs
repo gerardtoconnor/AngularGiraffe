@@ -1,9 +1,33 @@
 module Giraffe.HttpRouter
 
+open System.Threading.Tasks
+open Giraffe.Task
 open Giraffe.HttpHandlers
 open FSharp.Core.Printf
 open System.Collections.Generic
+open Giraffe.HttpRouter.RouterParsers
 
+type HttpContext() = 
+    class end
+
+//type Continuation = HttpContext -> Task<HttpContext>
+
+//result of any handler
+type HttpHandler = HttpContext -> Task<HttpContext option>
+
+let compose (a:HttpHandler) (b:HttpHandler) : HttpHandler =
+    fun ctx ->
+        task {
+            let! ctxo = a ctx
+            match ctxo with
+            | Some ctx -> return! b ctx
+            | None -> return None
+        }
+
+let (>=>) = compose 
+let handler : HttpHandler = Some >> Task.FromResult 
+
+type Parser = string -> int -> int -> struct(bool*obj)
 
 let modmatch (ca: char []) =
     let result = Array.zeroCreate<int>(ca.Length)
@@ -55,167 +79,34 @@ type INodeType =
 | SubRouteFn = 3uy
 | ApplyMatchFn = 4uy
 | MatchCompleteFn = 5uy
+
 // performance Node Trie
+////////////////////////
 
-// type MidMatcher =
-//     struct
-//         val Fmt : char
-//         val NextChar : char
-//         val NextNode : TNode
-//     end
-// and EndMatcher =
-//     struct
-//         val Fmt : char
-//         val ArgCount : int
-//         val MapRouteFn : (obj -> HttpHandler)
-//    end
-// and EndCompleter =
-//     struct
-//         val ArgCount : int
-//         val MapRouteFn : (obj -> HttpHandler)
-//     end
-type TNode =
+type Instr =
+| Next = 0uy        // if match, move to next
+| Hop = 1uy         // if match, hop to node at HOP val ?? needed?
+| Retry = 2uy       // when matching multiple routes, if matched, jump to HOP, else cont to next node
+| FnContinue = 3uy  // a partial match/subroute that allows matching to cont (move next) while fns pulled
+| FnFinish = 4uy    // ending function that requires no further matching, get fn and go
+| FnFinishOrRetry = 5uy  // where at last, FnFinish, otherwise Retry eg '/' , '/about/ -> '/' has both functionality
+| FnContOrFinish = 6uy   // where at last, FnFinish, otherwise FnCont eg '/a%s' , '/a%s/b -> 'a' has both functions, need to test partial first
+| NOP = 100uy 
 
-        //charet upper & lower inclusive bounds of array
-        val UBound : int
-        val LBound : int
-        val Completion : string
-        //sparse array ref
-type MidMatcher =
-    struct
-        val Fmt : char
-        val NextChar : char
-        val NextNode : TNode
-    end
-and EndMatcher =
-    struct
-        val Fmt : char
-        val ArgCount : int
-        val MapRouteFn : (obj -> HttpHandler)
-   end
-and EndCompleter =
-    struct
-        val ArgCount : int
-        val MapRouteFn : (obj -> HttpHandler)
-    end
-[<Struct>]
-type TNode =
-        val UBound : int 
-        val LBound : int
-        val Mod : int
-        val Token : string       
-        val Edges : TNode []
-        val NodeType : INodeType
-        val HandlerFn : HttpHandler
-        val EndCompleterFn : EndCompleter
-        val MidMatchFns : MidMatcher []
-        val EndMatchFn : EndMatcher
-        
-        //,edgeArray:TNode[],hdlrFn:obj,midFns:MidMatcher [],endFns:EndMatcher []
-        new(cmin:int,cmax:int,nt:INodeType,edgeArray:TNode[],hdlrFn:HttpHandler,midFns:MidMatcher [],endFn:EndMatcher) = 
-            {
-                LBound = cmin
-                UBound = cmax
-                Completion = ""
-                NodeType = nt
-                Edges = edgeArray
-                HandlerFn = hdlrFn
-                MidMatchFns = midFns
-                EndMatchFn = endFn
-            }
-        new(ca:char [],nt) = 
-                let m,l,h = modmatch ca
-                {
-                    LBound = l
-                    UBound = h
-                    Mod = m
-                    Token = ""
-                    NodeType = nt
-                    Edges = Array.zeroCreate<TNode>(h - l)
-                    HandlerFn = Unchecked.defaultof<HttpHandler>
-                    EndCompleterFn = Unchecked.defaultof<EndCompleter>
-                    MidMatchFns = Array.zeroCreate<MidMatcher>(0)
-                    EndMatchFns = Array.zeroCreate<EndMatcher>(0)
-                }
-        // new(noteType:INodeType,vnl:(char * TNode) list) =
-        //     let cmin,cmax = 
-        //         vnl |> List.fold (fun (n,x) (c,d) -> min n c,max x c) (System.Char.MaxValue,System.Char.MinValue)
-        //         |> fun (n,x) -> int n,int x
-        //     let edgeArray = Array.zeroCreate<TNode>(cmax - cmin  + 1)
-        //     for (c,n) in vnl do
-        //         edgeArray.[(int c) - cmin] <- n
-        //     {
-        //         LBound = cmin
-        //         UBound = cmax
-        //         INodeType = INodeType.EmptyNode
-        //         Edges = edgeArray
-        //         HandlerFn = Unchecked.defaultof<HttpHandler>
-        //         MidMatchFns = Array.zeroCreate<MidMatcher>(0)
-        //         EndMatchFns = Array.zeroCreate<EndMatcher>(0)
-        //     }
-    //end
-
-let inline intIn x l u = (x - l) * (u - x) >= 0
-
-//#time
-let path = "/test/cats/dogs" //6 -> 9
-let sting = "cats"
-let start = 6
-
-let mutable result = 0
-
-for i in 1 .. 100000000 do
-    if System.String.CompareOrdinal(path,start,sting,0,sting.Length) = 0  then
-        result <- result + 1
-printfn "result is %i" result
-
-let rec go i =  
-    let rec word j k =
-        if k < sting.Length  then //&& j < path.Length
-            if path.[j] = sting.[k] then
-                //printfn "pos %i matching %c" k sting.[k] 
-                word (j+1) (k+1)
-            else
-                //printfn "failed at pos %i matching %c" k sting.[k]
-                false
-        else
-            //printfn "matching complete at pos %i" k
-            true
-    if i > 0 then
-        if word start 0 then
-            result <- result + 1
-        go (i - 1)
-    else
-        printfn "result is %i" result                
-
-go 100000000
-
-
-let testAry = [|'i';'t';'b';'q';|]
-
-let node = TNode(testAry,INodeType.EmptyNode)
-node.Edges.[0] <- Unchecked.defaultof<TNode>
-node.Token <- "imToken"
-
-let result = modmatch testAry
-
-let paths = [|
-    "/"
-    "/test"
-    "/about"
-|]
-
-let work =
-    paths
-    |> Array.map 
-        (fun path -> path.ToCharArray() |> List.ofArray)
+type HandleFn =
+| HandleFn      of HttpHandler      // plain handler 
+| ParseStart    of int * Parser     // argCount * parser
+| ParseMid      of Parser           // parser
+| ParseComplete of (System.Type []) * int * (obj -> HttpHandler) // types * argCount * fn 
+| ParseApplyEnd of (System.Type []) * int * Parser * (obj -> HttpHandler) // types * argCount * parser * fn
+| ParseMulti    of HandleFn list
 
 [<Struct>]
 type AryNode =
-    val Char : byte
-    val Hop : int16
-    val Retry : byte
-    new (char,hop,retry) = { Char=char ; Hop=hop ; Retry=retry }
+    val Char  : byte
+    val Hop   : int16
+    val Instr : Instr
+    new (char,hop,instr) = { Char = char ; Hop = hop ; Instr = instr }
 
 let runPath (path:string) (nodes:AryNode []) (fns:Dictionary<int,string>) =
     let rec go p n rt =
@@ -225,8 +116,210 @@ let runPath (path:string) (nodes:AryNode []) (fns:Dictionary<int,string>) =
             | true -> Some(fns.[n])
             | false -> go (p + 1) (int nodes.[n].Hop) nodes.[n].Retry          
         | false ->
-            match rt with
-            | 0uy -> None
-            | x -> go (p + 1) (int nodes.[n].Hop) (x - 1uy)
+            match nodes.[n].Instr with
+            | Instr.Retry -> go (p + 1) (n + 1) acc
+            | _ -> None
+    go 0 0 []
 
-    go 0 0 0uy
+/// Domain Types
+////////////////
+type PathChunk =
+| Token of string
+| Parse of Parser
+
+type PathExpr =
+| Route of string
+| Routef of (PathChunk list) * (obj -> HttpHandler)
+
+type HandlerMap =
+| Handle of string * HttpHandler
+| Handlef of (PathChunk list) * (obj -> HttpHandler)
+
+type PathNode(pe : PathExpr) =
+    member val ChildRoute = [] with get,set
+    member val HandleChain = None  with get,set 
+    
+    member x.GetBinding () =
+        match pe , x.HandleChain with
+        | Routef (pcl,fn) , Some hc -> Handlef(pcl,(fun (o:obj) -> fn o >=> hc ))
+        | Routef (pcl,fn) , None    -> Handlef(pcl,fn)
+        | Route path      , Some hc -> Handle(path,hc)
+        | Route path      , None    -> failwith "no handlers were provided for path:" + path 
+    // overloads
+    static member (=>) (pn:PathNode,h:HttpHandler) = 
+        match pn.HandleChain with
+        | Some ph -> pn.HandleChain <- Some(ph >=> h)
+        | None    -> pn.HandleChain <- Some h
+        pn
+    static member (=>) (pn:PathNode,rn:PathNode list) = 
+        pn.ChildRoute <- rn
+        pn
+
+type AryBuilder() =
+    let ary = ResizeArray<AryNode>()
+    let aryPos = 0
+    let fns = ResizeArray<HandleFn>()
+    let fnsPos = 0
+
+
+let router (paths: PathNode list) =
+    
+    let ary = ResizeArray<AryNode>()
+    let fns = ResizeArray<HandleFn>()
+    
+
+    let placeholder (c:char) = AryNode(c,0,Instr.NOP)
+    // let aryNodes = Array.zeroCreate<AryNode>(0)
+    // let fnNodes = Array.zeroCreate<HttpHandler>(0)
+    // traverse the tree and map the functions to arrays
+    let rec brancher i cl state =
+
+
+    let rec tokenize i cl state =
+        match cl with
+        | Token tk ->
+            for ti in 0 .. tk.Length - 1 do
+                AryNode(byte(tk.Chars ti),i + 1, Instr.Next) // <<<<<<<<<<< not checked
+        | Parse pr -> 
+    
+    let rec branchPlacehold ls =
+        let processStr str =
+            if str.Length > 0 
+            then ary.Add (placeholder str.[0])
+                   branchPlacehold ls
+            else failwith (sprintf "Invalid empty route format token %A" pcl)        
+        
+        match ls with
+        | [] -> acc
+        | h :: t ->
+            match h.GetBinding() with
+            | Handlef (pcl,_) ->
+                match pcl with
+                | (Token str) :: _  -> processStr t
+                | _ -> failwith (sprintf "Invalid route format %A" pcl) 
+            | Handle  (str,_)       -> processStr t
+
+    //for each set of branches set up a retry array
+    let rec brancher i ls state =
+        match ls with
+        | [] -> ()
+        | h :: t ->
+            match h.GetBinding() with
+            | Handlef (pcl,fn) ->
+                match pcl.head with
+                | Token str -> if str.Length > 0 then str.[0] else ()
+                | Parse prs -> () //todo: need figure out handling
+            | Handle  (str,fn) -> if str.Length
+            go t 
+    let rec go pls (state:(PathNode list) list) =
+        let ilen = ary.Count
+        branchPlacehold pls // add branch placeholders
+        
+
+    go (Queue<PathNode list>())
+
+    //using now compiled arrays, provide handler to process path queries
+    fun ctx ->
+        runPath aryNodes fnNodes ctx.Request.Path.Value ctx        
+
+// handler functions
+let inline route (path:string) = PathNode(Route path)
+
+// type Bindy() =
+//     member x.EatMe<'U,'T> (sf:StringFormat<'U,'T>) (fn : 'T -> HttpHandler) (v2:obj) = v2 :?> 'T |> fn
+// let bindy = Bindy()
+
+let inline routef (fmt:StringFormat<'U,'T>) (fn:'T -> HttpHandler) =
+    let path = fmt.Value
+    let last = path.Length - 1
+
+    let rec go i acc =
+        let n = path.IndexOf('%',i)     // get index of next '%'
+        if n = -1 || n = last then
+            // non-parse case & end
+            let tl = Token( path.Substring(i,n - i) ) :: acc
+            PathNode(Routef(tl,(fun (o:obj) -> o :?> 'T |> fn)))       
+        else
+            let fmtc = path.[n + 1]
+            if fmtc = '%' then 
+                go (n + 2) (Token( path.Substring(i,n - i) ) :: acc)
+            else 
+                match formatStringMap.TryGet fmtc with
+                | false, prs ->
+                    failwith <| sprintf "Invalid parse char in path %s, pos: %i, char: %c" path n fmtc
+                | true , prs ->
+                    go (n + 2) (Parse(prs)::acc)
+    go 0 []
+
+let text (v:string) = fun (ctx:HttpContext) -> ctx |> Some |> Task.FromResult 
+let pn = route "/about"
+let pn2 = pn => text "about"
+
+let webapp = routeBase [
+                route "/about" => text "about" => text "again"
+                route "/auth"  => [
+                    route "/cats" => text "cats"
+                    routef "/dog%is-sds" (fun v -> text v)                    
+                        ]
+                    // choose [
+                    //     AuthHandler >=| [
+                    //         path "/authorised user" >=> text "/authorised user"
+                    //         path "/authorised manger" >=> text "/authorised manger"
+                    //     ]
+                    //     UnAuthHandler >=> text "You are not authorised"
+                    // ]
+                route "/other" >=> text "other"
+    ]
+
+
+//((cts |> fn arg1) |> fn arg2)  
+//hndl
+
+// [<Struct>]
+// type State = {
+//     mutable succ : Continuation
+//     mutable fail : Continuation
+//     ctx : HttpContext
+//     }
+
+// type State2 = 
+//     struct
+//         val mutable succ : Continuation []
+//         val mutable succPos : int
+//         val mutable fail : Continuation []
+//         val mutable failPos : int
+//         val ctx : HttpContext
+//         member x.Succ
+//             with get() = 
+//                 match x.succPos with 
+//                 | -1 -> x.succ.[0] x.ctx 
+//                 | _ ->
+//                     x.succPos <- x.succPos - 1
+//                     x.succ.[x.succPos] x.ctx
+
+//         member x.Fail
+//             with get() = 
+//                 match x.failPos with 
+//                 | -1 -> x.fail.[0] x.ctx 
+//                 | _ ->
+//                     x.succPos <- x.succPos - 1
+//                     x.succ.[x.succPos] x.ctx
+                
+//         new(ictx) = { ctx = ictx ; succ = Unchecked.defaultof<Continuation> ; fail = Unchecked.defaultof<Continuation> }
+//     end
+
+// let state = {
+//     succ=Unchecked.defaultof<Continuation>;
+//     fail=Unchecked.defaultof<Continuation>;
+//     ctx=Unchecked.defaultof<HttpContext>
+//     }
+
+// let State2 = State2(Unchecked.defaultof<HttpContext>)
+
+// let (>=>) (a:Continuation) (b:Continuation) = 
+//     fun (s:State2) -> 
+//         let s2 = State2(ctx)
+//         s2.succ <- s.succ
+//         s.succ <- b
+
+
