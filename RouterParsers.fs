@@ -127,7 +127,7 @@ let floatParse2 (path:string) ipos fpos =
     | _ -> go (ipos)
 
 
-let formatStringMap =
+let formatMap =
     dict [
     // Char    Range Parser
     // ---------------  -------------------------------------------
