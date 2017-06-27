@@ -29,38 +29,39 @@ let handler : HttpHandler = Some >> Task.FromResult
 
 type Parser = string -> int -> int -> struct(bool*obj)
 
-let modmatch (ca: char []) =
-    let result = Array.zeroCreate<int>(ca.Length)
-    let rec modtest m i j= 
-        let rec charMod m i j =
-            let rec dupeTest mr m i j =
-                if j < i then // should be i - 1
-                    if mr = result.[j] then //duplicate found
-                        //printfn "found duplicate j.[%i]:%i for char i.[%i]:%c on mod %i" j result.[j] i ca.[i] m
-                        for z in 0 .. result.Length - 1 do
-                            result.[z] <- Unchecked.defaultof<int>
-                        modtest (m+1) 0 0  //failed, next mod 
-                    else
-                        //printfn "no dupe at j.[%i]:%i so onto next j" j result.[j] 
+// let modmatch (ca: char []) =
+//     let result = Array.zeroCreate<int>(ca.Length)
+//     let rec modtest m i j= 
+//         let rec charMod m i j =
+//             let rec dupeTest mr m i j =
+//                 if j < i then // should be i - 1
+//                     if mr = result.[j] then //duplicate found
+//                         //printfn "found duplicate j.[%i]:%i for char i.[%i]:%c on mod %i" j result.[j] i ca.[i] m
+//                         for z in 0 .. result.Length - 1 do
+//                             result.[z] <- Unchecked.defaultof<int>
+//                         modtest (m+1) 0 0  //failed, next mod 
+//                     else
+//                         //printfn "no dupe at j.[%i]:%i so onto next j" j result.[j] 
                         
-                        dupeTest mr m i (j+1)
-                else
-                    result.[i] <- mr // add to results
-                    //printfn "no duplicates found for char i.[%i]:%c on mod %i" i ca.[i] m
-                    charMod m (i+1) 0 //no duplicates so process next char
+//                         dupeTest mr m i (j+1)
+//                 else
+//                     result.[i] <- mr // add to results
+//                     //printfn "no duplicates found for char i.[%i]:%c on mod %i" i ca.[i] m
+//                     charMod m (i+1) 0 //no duplicates so process next char
             
-            //start of char mod
-            if i < ca.Length then
-                let mr = int(ca.[i]) % m
-                printfn "char code for %c is %i" ca.[i] mr 
-                dupeTest mr m i 0
-            else
-                //printfn "results are %A" result
-                m, Array.min result, Array.max result 
-        charMod m 0 0
-    modtest 2 0 0
+//             //start of char mod
+//             if i < ca.Length then
+//                 let mr = int(ca.[i]) % m
+//                 printfn "char code for %c is %i" ca.[i] mr 
+//                 dupeTest mr m i 0
+//             else
+//                 //printfn "results are %A" result
+//                 m, Array.min result, Array.max result 
+//         charMod m 0 0
+//     modtest 2 0 0
 
-
+type TNode() = 
+    let 
 
 
 //this is a model for further performant router that uses struct nodes
@@ -104,7 +105,7 @@ type HandleFn =
 [<Struct>]
 type AryNode =
     val Char  : byte
-    val Hop   : int16
+    val Hop   : uint16
     val Instr : Instr
     new (char,hop,instr) = { Char = char ; Hop = hop ; Instr = instr }
 
@@ -326,3 +327,16 @@ let webapp = routeBase [
 //         s.succ <- b
 
 
+type IFlag =
+| Next =        0b00000001        // if match, move to next
+| Hop =         0b00000010         // if match, hop to node at HOP val ?? needed?
+| Retry =       0b00000011       // when matching multiple routes, if matched, jump to HOP, else cont to next node
+| FnContinue =  0b00000100  // a partial match/subroute that allows matching to cont (move next) while fns pulled
+| FnFinish =    0b00001000    // ending function that requires no further matching, get fn and go
+| NOP =         0b00000000
+
+let flag = IFlag.FnContinue ||| IFlag.Retry
+if flag = (IFlag.FnContinue ||| IFlag.Retry) then printf "&&& works!"
+flag = (IFlag.FnContinue ||| IFlag.Retry)
+flag = (IFlag.FnContinue ||| IFlag.Retry)
+let err = IFlag.Next ||| IFlag.Retry
