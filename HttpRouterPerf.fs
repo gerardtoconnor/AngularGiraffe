@@ -60,10 +60,6 @@ type Parser = string -> int -> int -> struct(bool*obj)
 //         charMod m 0 0
 //     modtest 2 0 0
 
-type TNode() = 
-    let 
-
-
 //this is a model for further performant router that uses struct nodes
 type CrawlerState =
 | FullScan = 0uy
@@ -146,22 +142,55 @@ type PathNode(pe : PathExpr) =
         | Routef (pcl,fn) , None    -> Handlef(pcl,fn)
         | Route path      , Some hc -> Handle(path,hc)
         | Route path      , None    -> failwith "no handlers were provided for path:" + path 
-    // overloads
-    static member (=>) (pn:PathNode,h:HttpHandler) = 
+    member pn.AddHandler (h:HttpHandler) =
         match pn.HandleChain with
         | Some ph -> pn.HandleChain <- Some(ph >=> h)
         | None    -> pn.HandleChain <- Some h
         pn
-    static member (=>) (pn:PathNode,rn:PathNode list) = 
+    member pn.AddChildPaths (rnl:PathNode list) =
+        pn.ChildRoute <- rnl
+        pn
+    // overloads
+    static member (>=>) (pn:PathNode,h:HttpHandler) =  pn.AddHandler  h
+
+    static member (>=>) (pn:PathNode,pn2:PathNode) = pn // HACK Testing
+
+    static member (>=>) (h:HttpHandler,pn:PathNode) = // HACK Testing
+        match pn.HandleChain with
+        | Some ph -> pn.HandleChain <- Some(ph >=> h)
+        | None    -> pn.HandleChain <- Some h
+        pn
+    static member (>=>) (pn:PathNode,rn:PathNode list) = 
         pn.ChildRoute <- rn
         pn
 
-type AryBuilder() =
-    let ary = ResizeArray<AryNode>()
-    let aryPos = 0
-    let fns = ResizeArray<HandleFn>()
-    let fnsPos = 0
+///Compose Extentions
+type ComposeExtension = ComposeExtension with
+    static member        (?<-) (ComposeExtension, (a:PathNode) , (b:HttpHandler)) = a.AddHandler b
+    static member        (?<-) (ComposeExtension, (a:PathNode) , (b:PathNode list)) = a.AddChildPaths b
+    static member inline (?<-) (ComposeExtension, a , b) = a >=> b
+let inline (>=>) a b = (?<-) ComposeExtension a b
 
+let parsef<'T when 'T : struct> (fmt:StringFormat<'U,'T>,fn:'T -> HttpHandler) =
+    let path = fmt.Value
+    let last = path.Length - 1
+    let rec go i acc =
+        let n = path.IndexOf('%',i)     // get index of next '%'
+        if n = -1 || n = last then
+            // non-parse case & end
+            let tl = Token( path.Substring(i,n - i) ) :: acc
+            Handlef(tl,(fun (o:obj) -> o :?> 'T |> fn))      
+        else
+            let fmtc = path.[n + 1]
+            if fmtc = '%' then 
+                go (n + 2) (Token( path.Substring(i,n - i) ) :: acc)
+            else 
+                match formatStringMap.TryGet fmtc with
+                | false, prs ->
+                    failwith <| sprintf "Invalid parse char in path %s, pos: %i, char: %c" path n fmtc
+                | true , prs ->
+                    go (n + 2) (Parse(prs)::acc)
+    go 0 []
 
 let router (paths: PathNode list) =
     
@@ -254,12 +283,12 @@ let inline routef (fmt:StringFormat<'U,'T>) (fn:'T -> HttpHandler) =
 
 let text (v:string) = fun (ctx:HttpContext) -> ctx |> Some |> Task.FromResult 
 let pn = route "/about"
-let pn2 = pn => text "about"
+let pn2 = pn >=> text "about"
 
-let webapp = routeBase [
-                route "/about" => text "about" => text "again"
-                route "/auth"  => [
-                    route "/cats" => text "cats"
+let webapp = router [
+                route "/about" >=> text "about" >=> text "again"
+                route "/auth"  >=> [
+                    route "/cats" >=> text "cats"
                     routef "/dog%is-sds" (fun v -> text v)                    
                         ]
                     // choose [
