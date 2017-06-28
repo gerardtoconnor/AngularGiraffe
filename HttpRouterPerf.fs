@@ -74,7 +74,7 @@ type Instr =
 (*
     Route permutaions
     /               //../ node is (End|Next)
-    /test           //..t node is (Next|Cont|Finish|End)
+    /test           //..t node is (Next|Cont|Finish|||End)
     /test%s
     /test%s/tail
     /testy
@@ -98,6 +98,16 @@ type HandleFn =
 | ParseComplete of (System.Type []) * (obj -> HttpHandler) // types * fn 
 | ParseApplyEnd of (System.Type []) * Parser * (obj -> HttpHandler) // types * parser * fn
 | ParseMulti    of HandleFn list
+
+type FnFlag =
+| End = 0uy
+| Retry = 1uy
+
+[<Struct>]
+type FnNode =
+    val OnFail   : FnFlag
+    val Handle : HandleFn
+    new (flag:FnFlag, handle:HandleFn) = { OnFail = flag ; Handle = handle} 
 
 [<Struct>]
 type AryNode =
@@ -292,6 +302,20 @@ let webapp = router [
                     // ]
                 route "/other" >=> text "other"
     ]
+
+(*
+    Route build process
+    1  take path lists and compress list to remove overlaps (into trie structure?)
+    2  once paths are into trie, (with child path lists not not proccessed, stored at end nodes) can begin crawl
+    3  in each node, lay down path
+    4  if Fns & child nodes, combo flag, fns added to fnAry, index back added to Hop
+    5  if childnodes, lay down retry ary
+*)
+
+
+
+
+
 
 
 //((cts |> fn arg1) |> fn arg2)  
