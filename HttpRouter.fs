@@ -1,4 +1,4 @@
-module Test.HttpRouter
+module Giraffe.HttpRouter
 
 open System.Threading.Tasks
 open Microsoft.AspNetCore.Http
@@ -10,7 +10,7 @@ open Microsoft.FSharp.Reflection
 //open Giraffe.AsyncTask
 open Giraffe.ValueTask
 open Giraffe.HttpHandlers
-open HttpRouter.RouterParsers
+open Giraffe.HttpRouter.RouterParsers
 
 // implimenation of (router) Trie Node
 // assumptions: memory and compile time not relevant, all about execution speed, initially testing with Dictionary edges

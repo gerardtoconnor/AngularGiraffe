@@ -29,39 +29,13 @@ let handler : HttpHandler = Some >> Task.FromResult
 
 type Parser = string -> int -> int -> struct(bool*obj)
 
-let modmatch (ca: char []) =
-    let result = Array.zeroCreate<int>(ca.Length)
-    let rec modtest m i j= 
-        let rec charMod m i j =
-            let rec dupeTest mr m i j =
-                if j < i then // should be i - 1
-                    if mr = result.[j] then //duplicate found
-                        //printfn "found duplicate j.[%i]:%i for char i.[%i]:%c on mod %i" j result.[j] i ca.[i] m
-                        for z in 0 .. result.Length - 1 do
-                            result.[z] <- Unchecked.defaultof<int>
-                        modtest (m+1) 0 0  //failed, next mod 
-                    else
-                        //printfn "no dupe at j.[%i]:%i so onto next j" j result.[j] 
-                        
-                        dupeTest mr m i (j+1)
-                else
-                    result.[i] <- mr // add to results
-                    //printfn "no duplicates found for char i.[%i]:%c on mod %i" i ca.[i] m
-                    charMod m (i+1) 0 //no duplicates so process next char
-            
-            //start of char mod
-            if i < ca.Length then
-                let mr = int(ca.[i]) % m
-                printfn "char code for %c is %i" ca.[i] mr 
-                dupeTest mr m i 0
-            else
-                //printfn "results are %A" result
-                m, Array.min result, Array.max result 
-        charMod m 0 0
-    modtest 2 0 0
-
-
-
+let typeMap = function
+    | 'b' -> typeof<bool>   // bool
+    | 'c' -> typeof<char>   // char
+    | 'i' -> typeof<int>    // int
+    | 'd' -> typeof<int64>  // int64
+    | 'f' -> typeof<float>  // float
+    | _   -> typeof<string> // string
 
 //this is a model for further performant router that uses struct nodes
 type CrawlerState =
@@ -88,36 +62,55 @@ type Instr =
 | Hop = 1uy         // if match, hop to node at HOP val ?? needed?
 | Retry = 2uy       // when matching multiple routes, if matched, jump to HOP, else cont to next node
 | FnContinue = 3uy  // a partial match/subroute that allows matching to cont (move next) while fns pulled
-| FnFinish = 4uy    // ending function that requires no further matching, get fn and go
-| FnFinishOrRetry = 5uy  // where at last, FnFinish, otherwise Retry eg '/' , '/about/ -> '/' has both functionality
-| FnContOrFinish = 6uy   // where at last, FnFinish, otherwise FnCont eg '/a%s' , '/a%s/b -> 'a' has both functions, need to test partial first
+| FnEnd = 4uy       // end function at last character (Handler/MatchComplete)
+| FnFinish = 4uy    // parse mid to end path function represents (MatchToEnd)
+| FnFinishOrNext = 5uy    // parse midToEnd and match, try match next before parse finish /%
+| FnFinishOrRetry = 6uy  // where at last, FnFinish, otherwise Retry eg '/' , '/about/ -> '/' has both functionality
+| FnContOrFinish = 7uy   // where at last, FnFinish, otherwise FnCont eg '/a%s' , '/a%s/b -> 'a' has both functions, need to test partial first
 | NOP = 100uy 
+
+//FnContOrFinish requires hack due to two functions (i=Cont / i+1=Fin ?)
+
+(*
+    Route permutaions
+    /               //../ node is (End|Next)
+    /test           //..t node is (Next|Cont|Finish|End)
+    /test%s
+    /test%s/tail
+    /testy
+    /about
+    /telephone
+    /tent/%i/next   // ../ node is (Contx2) >> parseTry State (/|s)
+    /tent/%s/next
+    /tent/%spost    
+    List of nodes needed
+    /,f#,FinNxt|t,h#6,rty|a,h#,nxt|b,_,nxt|o,_,nxt|u,_,nxt|t,f#,Fin|e,_,n| ...
+    ... |t,_,nxt|/,f#,Cont|/,h#,rty|s,_,n|p|o|s|t,f#,Fin|n|e|x|t,f#,fin|
+    ... t,f#,ContFin|
+*)
 
 type HandleFn =
 | HandleFn      of HttpHandler      // plain handler 
 | ParseStart    of int * Parser     // argCount * parser
-| ParseMid      of Parser           // parser
-| ParseComplete of (System.Type []) * int * (obj -> HttpHandler) // types * argCount * fn 
-| ParseApplyEnd of (System.Type []) * int * Parser * (obj -> HttpHandler) // types * argCount * parser * fn
+| ParseMid      of int * Parser     // argIndex * parser
+| ParseComplete of (System.Type []) * (obj -> HttpHandler) // types * fn 
+| ParseApplyEnd of (System.Type []) * Parser * (obj -> HttpHandler) // types * parser * fn
 | ParseMulti    of HandleFn list
 
 [<Struct>]
 type AryNode =
     val Char  : byte
-    val Hop   : int16
+    val Hop   : uint16
     val Instr : Instr
     new (char,hop,instr) = { Char = char ; Hop = hop ; Instr = instr }
 
-let runPath (nodes:AryNode []) (fns:(bool*(unit->string)) []) (path:string) (ctx:HttpContext) =
-    let rec go p n acc =
+let runPath (path:string) (nodes:AryNode []) (fns:Dictionary<int,string>) =
+    let rec go p n rt =
         match (byte path.[p]) = nodes.[n].Char with
         | true ->
-            match nodes.[n].Instr with 
-            | Instr.Terminal ->
-                match fns.[int nodes.[n].Hop] with
-                | true,  fn -> go (p + 1) (n + 1) ((fn ())::acc)
-                | false, fn -> Some((fn ())::acc)
-            | _ -> go (p + 1) (int nodes.[n].Hop) acc        
+            match n = (int nodes.[n].Hop) with
+            | true -> Some(fns.[n])
+            | false -> go (p + 1) (int nodes.[n].Hop) nodes.[n].Retry          
         | false ->
             match nodes.[n].Instr with
             | Instr.Retry -> go (p + 1) (n + 1) acc
@@ -148,22 +141,46 @@ type PathNode(pe : PathExpr) =
         | Routef (pcl,fn) , None    -> Handlef(pcl,fn)
         | Route path      , Some hc -> Handle(path,hc)
         | Route path      , None    -> failwith "no handlers were provided for path:" + path 
-    // overloads
-    static member (=>) (pn:PathNode,h:HttpHandler) = 
+    member pn.AddHandler (h:HttpHandler) =
         match pn.HandleChain with
         | Some ph -> pn.HandleChain <- Some(ph >=> h)
         | None    -> pn.HandleChain <- Some h
         pn
-    static member (=>) (pn:PathNode,rn:PathNode list) = 
-        pn.ChildRoute <- rn
+    member pn.AddChildPaths (rnl:PathNode list) =
+        pn.ChildRoute <- rnl
         pn
+    // overloads
+    static member (=>) (pn:PathNode,h:HttpHandler) =  pn.AddHandler  h
 
-type AryBuilder() =
-    let ary = ResizeArray<AryNode>()
-    let aryPos = 0
-    let fns = ResizeArray<HandleFn>()
-    let fnsPos = 0
+    static member (=>) (pn:PathNode,rn:PathNode list) = pn.AddChildPaths rn
 
+///Compose Extentions
+type ComposeExtension = ComposeExtension with
+    static member        (?<-) (ComposeExtension, (a:PathNode) , (b:HttpHandler)) = a.AddHandler b
+    static member        (?<-) (ComposeExtension, (a:PathNode) , (b:PathNode list)) = a.AddChildPaths b
+    static member inline (?<-) (ComposeExtension, a , b) = compose a b
+let inline (>=>) a b = (?<-) ComposeExtension a b
+
+let parsef<'T when 'T : struct> (fmt:StringFormat<'U,'T>,fn:'T -> HttpHandler) =
+    let path = fmt.Value
+    let last = path.Length - 1
+    let rec go i acc =
+        let n = path.IndexOf('%',i)     // get index of next '%'
+        if n = -1 || n = last then
+            // non-parse case & end
+            let tl = Token( path.Substring(i,n - i) ) :: acc
+            Handlef(tl,(fun (o:obj) -> o :?> 'T |> fn))      
+        else
+            let fmtc = path.[n + 1]
+            if fmtc = '%' then 
+                go (n + 2) (Token( path.Substring(i,n - i) ) :: acc)
+            else 
+                match formatStringMap.TryGet fmtc with
+                | false, prs ->
+                    failwith <| sprintf "Invalid parse char in path %s, pos: %i, char: %c" path n fmtc
+                | true , prs ->
+                    go (n + 2) (Parse(prs)::acc)
+    go 0 []
 
 let router (paths: PathNode list) =
     
@@ -247,7 +264,7 @@ let inline routef (fmt:StringFormat<'U,'T>) (fn:'T -> HttpHandler) =
             if fmtc = '%' then 
                 go (n + 2) (Token( path.Substring(i,n - i) ) :: acc)
             else 
-                match formatStringMap.TryGet fmtc with
+                match formatMap.TryGet fmtc with
                 | false, prs ->
                     failwith <| sprintf "Invalid parse char in path %s, pos: %i, char: %c" path n fmtc
                 | true , prs ->
@@ -256,12 +273,12 @@ let inline routef (fmt:StringFormat<'U,'T>) (fn:'T -> HttpHandler) =
 
 let text (v:string) = fun (ctx:HttpContext) -> ctx |> Some |> Task.FromResult 
 let pn = route "/about"
-let pn2 = pn => text "about"
+let pn2 = pn >=> text "about"
 
-let webapp = routeBase [
-                route "/about" => text "about" => text "again"
-                route "/auth"  => [
-                    route "/cats" => text "cats"
+let webapp = router [
+                route "/about" >=> text "about" >=> text "again"
+                route "/auth"  >=> [
+                    route "/cats" >=> text "cats"
                     routef "/dog%is-sds" (fun v -> text v)                    
                         ]
                     // choose [
@@ -326,3 +343,19 @@ let webapp = routeBase [
 //         s.succ <- b
 
 
+type IFlag =
+| Next =        0b00000001        // if match, move to next
+| Hop =         0b00000010         // if match, hop to node at HOP val ?? needed?
+| Retry =       0b00000100       // when matching multiple routes, if matched, jump to HOP, else cont to next node
+| FnContinue =  0b00001000  // a partial match/subroute that allows matching to cont (move next) while fns pulled
+| FnFinish =    0b00010000    // ending function that requires no further matching, get fn and go
+| NOP =         0b00000000
+
+let flag = IFlag.FnContinue ||| IFlag.Retry
+if flag = (IFlag.FnContinue ||| IFlag.Retry) then printf "&&& works!"
+flag = (IFlag.FnContinue ||| IFlag.Retry)
+flag = (IFlag.FnContinue ||| IFlag.Retry)
+let err = IFlag.Next ||| IFlag.Retry
+let bitval (v:IFlag) (p) = v &&& (IFlag.Next <<< p) 
+bitval flag 1
+Enum

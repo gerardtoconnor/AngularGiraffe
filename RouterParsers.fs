@@ -2,28 +2,6 @@ module Giraffe.HttpRouter.RouterParsers
 
 open System.Threading.Tasks
 
-type HttpContext() = 
-    class end
-
-//type Continuation = HttpContext -> Task<HttpContext>
-
-//result of any handler
-type HttpHandler = HttpContext -> Task<HttpContext option>
-
-
-let inline (>=>) (a:HttpHandler) (b:HttpHandler) : HttpHandler =
-    fun ctx ->
-        task {
-            let! ctxo = a ctx
-            match ctxo with
-            | Some ctx -> return! b ctx
-            | None -> return None
-        }
-
-//////////////////
-
-
-
 let inline between x l u = (x - l) * (u - x) >= LanguagePrimitives.GenericZero
 
 let rtrn (o:obj) = struct (true ,o)
@@ -149,7 +127,7 @@ let floatParse2 (path:string) ipos fpos =
     | _ -> go (ipos)
 
 
-let formatStringMap =
+let formatMap =
     dict [
     // Char    Range Parser
     // ---------------  -------------------------------------------
