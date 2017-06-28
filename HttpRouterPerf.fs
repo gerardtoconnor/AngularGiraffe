@@ -88,7 +88,7 @@ type Instr =
     ... |t,_,nxt|/,f#,Cont|/,h#,rty|s,_,n|p|o|s|t,f#,Fin|n|e|x|t,f#,fin|
     ... t,f#,ContFin|
 
-    ..t,
+    ..t,f#,EndNext|y,f#,EndRetry|
 *)
 
 type HandleFn =
