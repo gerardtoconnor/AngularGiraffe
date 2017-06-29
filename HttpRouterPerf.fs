@@ -62,11 +62,12 @@ type Instr =
 | Hop = 1uy         // if match, hop to node at HOP val ?? needed?
 | Retry = 2uy       // when matching multiple routes, if matched, jump to HOP, else cont to next node
 | FnContinue = 3uy  // a partial match/subroute that allows matching to cont (move next) while fns pulled
-| FnEnd = 4uy       // end function at last character (Handler/MatchComplete)
-| FnFinish = 4uy    // parse mid to end path function represents (MatchToEnd)
-| FnFinishOrNext = 5uy    // parse midToEnd and match, try match next before parse finish /%
-| FnFinishOrRetry = 6uy  // where at last, FnFinish, otherwise Retry eg '/' , '/about/ -> '/' has both functionality
-| FnContOrFinish = 7uy   // where at last, FnFinish, otherwise FnCont eg '/a%s' , '/a%s/b -> 'a' has both functions, need to test partial first
+| FnEnd = 4uy
+| FnEndOrNext = 5uy       // end function at last character (Handler/MatchComplete)
+| FnFinish = 6uy    // parse mid to end path function represents (MatchToEnd)
+| FnFinishOrNext = 7uy    // parse midToEnd and match, try match next before parse finish /%
+| FnFinishOrRetry = 8uy  // where at last, FnFinish, otherwise Retry eg '/' , '/about/ -> '/' has both functionality
+| FnContOrFinish = 9uy   // where at last, FnFinish, otherwise FnCont eg '/a%s' , '/a%s/b -> 'a' has both functions, need to test partial first
 | NOP = 100uy 
 
 //FnContOrFinish requires hack due to two functions (i=Cont / i+1=Fin ?)
@@ -97,6 +98,13 @@ type HandleFn =
 | ParseApplyEnd of (System.Type []) * Parser * (obj -> HttpHandler) // types * parser * fn
 | ParseMulti    of HandleFn list
 
+// tree compression node
+type CNode(c:char) =
+    member val Char = c with get
+    member val Edges = Dictionary<char,CNode>() with get
+    member val EndFn = None : HttpHandler option with get,set
+    member val FnList = [] with get,set  
+
 type FnFlag =
 | End = 0uy
 | Retry = 1uy
@@ -113,6 +121,7 @@ type AryNode =
     val Hop   : uint16
     val Instr : Instr
     new (char,hop,instr) = { Char = char ; Hop = hop ; Instr = instr }
+    new (char:char,hop:int,instr) = { Char = byte char ; Hop = uint16 hop ; Instr = instr }
 
 let runPath (path:string) (nodes:AryNode []) (fns:Dictionary<int,string>) =
     let rec go p n rt =
@@ -192,61 +201,44 @@ let parsef<'T when 'T : struct> (fmt:StringFormat<'U,'T>,fn:'T -> HttpHandler) =
                     go (n + 2) (Parse(prs)::acc)
     go 0 []
 
+//
+
 let router (paths: PathNode list) =
     
     let ary = ResizeArray<AryNode>()
     let fns = ResizeArray<HandleFn>()
+
     
+    let rec go (n:CNode) = 
+        let addEdges (dict:Dictionary<_,_>) =
+            let edgeCount = dict.Count
+            let nodes , _ = 
+                dict 
+                |> Seq.fold (fun (nodes,ec) kvp ->  
+                                AryNode(kvp.Key,0,if ec <= 1 then Instr.Next else Instr.Retry) |> ary.Add
+                                let nacc = kvp.Value :: acc
+                                nacc,(ec - 1)) ([],edgeCount)
 
-    let placeholder (c:char) = AryNode(c,0,Instr.NOP)
-    // let aryNodes = Array.zeroCreate<AryNode>(0)
-    // let fnNodes = Array.zeroCreate<HttpHandler>(0)
-    // traverse the tree and map the functions to arrays
-    let rec brancher i cl state =
+            nodes 
+            |> List.fold (fun acc node ->  
+                            let nacc = (ary.Count - 1) :: acc
+                            go kvp.Value 
+                            nacc ) []
 
-
-    let rec tokenize i cl state =
-        match cl with
-        | Token tk ->
-            for ti in 0 .. tk.Length - 1 do
-                AryNode(byte(tk.Chars ti),i + 1, Instr.Next) // <<<<<<<<<<< not checked
-        | Parse pr -> 
-    
-    let rec branchPlacehold ls =
-        let processStr str =
-            if str.Length > 0 
-            then ary.Add (placeholder str.[0])
-                   branchPlacehold ls
-            else failwith (sprintf "Invalid empty route format token %A" pcl)        
-        
-        match ls with
-        | [] -> acc
-        | h :: t ->
-            match h.GetBinding() with
-            | Handlef (pcl,_) ->
-                match pcl with
-                | (Token str) :: _  -> processStr t
-                | _ -> failwith (sprintf "Invalid route format %A" pcl) 
-            | Handle  (str,_)       -> processStr t
-
-    //for each set of branches set up a retry array
-    let rec brancher i ls state =
-        match ls with
-        | [] -> ()
-        | h :: t ->
-            match h.GetBinding() with
-            | Handlef (pcl,fn) ->
-                match pcl.head with
-                | Token str -> if str.Length > 0 then str.[0] else ()
-                | Parse prs -> () //todo: need figure out handling
-            | Handle  (str,fn) -> if str.Length
-            go t 
-    let rec go pls (state:(PathNode list) list) =
-        let ilen = ary.Count
-        branchPlacehold pls // add branch placeholders
-        
-
-    go (Queue<PathNode list>())
+        match n.EndFn with
+        | Some (h:HttpHandler) -> 
+            match n.Edges.Count , n.FnList with
+            | 0  , [] -> // No Edges or functions other then end  
+                fns.Add (HandleFn h)
+                AryNode(n.Char,fns.Count - 1,Instr.FnEnd) |> ary.Add
+                //end
+            | ec , [] -> // additional Edges as well as ending
+                fns.Add (HandleFn h)
+                AryNode(n.Char,fns.Count - 1,Instr.FnEndOrNext) |> ary.Add
+                let ipos = ary.Count - 1
+                let indexs = addEdges n.Edges
+                
+        | None ->
 
     //using now compiled arrays, provide handler to process path queries
     fun ctx ->
