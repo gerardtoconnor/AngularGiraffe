@@ -88,6 +88,8 @@ type Instr =
     /,f#,FinNxt|t,h#6,rty|a,h#,nxt|b,_,nxt|o,_,nxt|u,_,nxt|t,f#,Fin|e,_,n| ...
     ... |t,_,nxt|/,f#,Cont|/,h#,rty|s,_,n|p|o|s|t,f#,Fin|n|e|x|t,f#,fin|
     ... t,f#,ContFin|
+
+    ..t,f#,EndNext|y,f#,EndRetry|
 *)
 
 type HandleFn =
@@ -367,11 +369,10 @@ type IFlag =
 | FnFinish =    0b00010000    // ending function that requires no further matching, get fn and go
 | NOP =         0b00000000
 
-let flag = IFlag.FnContinue ||| IFlag.Retry
+let flag = IFlag.FnFinish ||| IFlag.Retry
 if flag = (IFlag.FnContinue ||| IFlag.Retry) then printf "&&& works!"
 flag = (IFlag.FnContinue ||| IFlag.Retry)
 flag = (IFlag.FnContinue ||| IFlag.Retry)
 let err = IFlag.Next ||| IFlag.Retry
 let bitval (v:IFlag) (p) = v &&& (IFlag.Next <<< p) 
-bitval flag 1
-Enum
+bitval flag 2
