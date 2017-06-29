@@ -288,7 +288,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
     let rec checkCompletionPath (pos:int) (node:Node) = // this funciton is only used by parser paths
         //this function doesn't test array bounds as all callers do so before
         let success(pos,node) = struct (true,pos,node)
-        let failure(pos)      = struct (false,pos,Unchecked.defaultof<Node)
+        let failure(pos)      = struct (false,pos,Unchecked.defaultof<Node>)
 
         if commonPathIndex path pos node.Token = node.Token.Length then
             let nxtChar = pos + node.Token.Length
@@ -316,7 +316,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
         | -1 -> failure
         | x1 -> //x1 represents position of match close char but rest of chain must be confirmed 
             match checkCompletionPath x1 node with
-            | true,x2,cn -> success(x1 - 1,x2,cn)                 // from where char found to end of node chain complete
+            | struct(true,x2,cn) -> success(x1 - 1,x2,cn)                 // from where char found to end of node chain complete
             | false,x2,_ -> getNodeCompletion cs (x1 + 1) node // char foundpart of match, not completion string
 
     let createResult (args:obj list) (argCount:int) (fn:obj -> HttpHandler) =
