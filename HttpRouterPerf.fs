@@ -74,7 +74,7 @@ type Instr =
 (*
     Route permutaions
     /               //../ node is (End|Next)
-    /test           //..t node is (Next|Cont|Finish|||End)
+    /test           //..t node is (Next(Hop)|Cont|Finish|||End)
     /test%s
     /test%s/tail
     /testy
