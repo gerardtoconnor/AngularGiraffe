@@ -38,23 +38,6 @@ let typeMap = function
     | 'f' -> typeof<float>  // float
     | _   -> typeof<string> // string
 
-//this is a model for further performant router that uses struct nodes
-type CrawlerState =
-| FullScan = 0uy
-| MidMatching = 1uy
-| ChildNodeMatchScan = 2uy
-| FinalMatchedCloseout = 3uy
-| EndPathCompleteMatch = 4uy
-| EndPathEndMatcingCompleteMatch = 5uy
-
-type INodeType =
-| UnInit = 0uy
-| EmptyNode = 1uy
-| HandlerFn = 2uy
-| SubRouteFn = 3uy
-| ApplyMatchFn = 4uy
-| MatchCompleteFn = 5uy
-
 // performance Node Trie
 ////////////////////////
 
@@ -93,6 +76,20 @@ type Instr =
     ..t,f#,EndNext|y,f#,EndRetry|
 *)
 
+/// Domain Types
+////////////////
+type PathChunk =
+| Token of string
+| Parse of char
+
+type PathExpr =
+| Route of string
+| Routef of (PathChunk list) * (obj -> HttpHandler)
+
+type HandlerMap =
+| Handle of string * HttpHandler
+| Handlef of (PathChunk list) * (obj -> HttpHandler)
+
 type HandleFn =
 | HandleFn      of HttpHandler      // plain handler 
 | ParseStart    of int * Parser     // argCount * parser
@@ -101,22 +98,48 @@ type HandleFn =
 | ParseApplyEnd of (System.Type []) * Parser * (obj -> HttpHandler) // types * parser * fn
 | ParseMulti    of HandleFn list
 
-// tree compression node
+// tree compression node (temporary structure to compress paths to tree before laying array)
 type CNode(c:char) =
+        
     member val Char = c with get
     member val Edges = Dictionary<char,CNode>() with get
     member val EndFn = None : HttpHandler option with get,set
-    member val FnList = [] with get,set  
+    member val FnList = [] with get,set
+    member x.PathStep (v:char)  =
+        match x.Edges.TryGetValue v with
+        | true, node -> node
+        | false, _ -> 
+            let node = CNode(v)
+            x.Edges.Add(v,node)
+            node
+    // member x.AddFn (fn:HandlerMap) =
+    //     match fn with
+    //     | Handle (_,f) -> x.EndFn <- Some f
+    //     | ofn -> x.FnList <- ofn :: x.FnList
 
-type FnFlag =
-| End = 0uy
-| Retry = 1uy
-
-[<Struct>]
-type FnNode =
-    val OnFail   : FnFlag
-    val Handle : HandleFn
-    new (flag:FnFlag, handle:HandleFn) = { OnFail = flag ; Handle = handle} 
+    member x.AddHandlerMap (hm:HandlerMap) =
+        let addPath (p:string) =
+            let rec go i (n:CNode) =
+                if i < p.Length 
+                then go (i + 1) (n.PathStep p.[i])
+                else n
+            go 0 x
+            
+        match hm with
+        | Handle (path,fn) -> 
+            let fnode = addPath path
+            fnode.EndFn <- Some fn
+        | Handlef (pcl,omap) ->
+            let argCount = pcl |> List.fold (fun acc v -> match v with | Parse _ -> acc + 1 | _ -> acc ) 0
+            let rec go ls (n:CNode) =
+                match pcl with
+                | [] -> 
+                | head :: tail ->
+                    match head with
+                    | Token t ->
+                        let cnode = n.addPath t
+                        go 
+                    | Parse p ->            
 
 [<Struct>]
 type AryNode =
@@ -126,32 +149,11 @@ type AryNode =
     new (char,hop,instr) = { Char = char ; Hop = hop ; Instr = instr }
     new (char:char,hop:int,instr) = { Char = byte char ; Hop = uint16 hop ; Instr = instr }
 
-let runPath (path:string) (nodes:AryNode []) (fns:Dictionary<int,string>) =
-    let rec go p n rt =
-        match (byte path.[p]) = nodes.[n].Char with
-        | true ->
-            match n = (int nodes.[n].Hop) with
-            | true -> Some(fns.[n])
-            | false -> go (p + 1) (int nodes.[n].Hop) nodes.[n].Retry          
-        | false ->
-            match nodes.[n].Instr with
-            | Instr.Retry -> go (p + 1) (n + 1) acc
-            | _ -> None
-    go 0 0 []
 
-/// Domain Types
-////////////////
-type PathChunk =
-| Token of string
-| Parse of Parser
 
-type PathExpr =
-| Route of string
-| Routef of (PathChunk list) * (obj -> HttpHandler)
 
-type HandlerMap =
-| Handle of string * HttpHandler
-| Handlef of (PathChunk list) * (obj -> HttpHandler)
+/// PathNode
+/////////////////////////
 
 type PathNode(pe : PathExpr) =
     member val ChildRoute = [] with get,set
@@ -176,35 +178,17 @@ type PathNode(pe : PathExpr) =
 
     static member (=>) (pn:PathNode,rn:PathNode list) = pn.AddChildPaths rn
 
-///Compose Extentions
+/// Compose Extentions
+/////////////////////////////////
+
 type ComposeExtension = ComposeExtension with
     static member        (?<-) (ComposeExtension, (a:PathNode) , (b:HttpHandler)) = a.AddHandler b
     static member        (?<-) (ComposeExtension, (a:PathNode) , (b:PathNode list)) = a.AddChildPaths b
     static member inline (?<-) (ComposeExtension, a , b) = compose a b
 let inline (>=>) a b = (?<-) ComposeExtension a b
 
-let parsef<'T when 'T : struct> (fmt:StringFormat<'U,'T>,fn:'T -> HttpHandler) =
-    let path = fmt.Value
-    let last = path.Length - 1
-    let rec go i acc =
-        let n = path.IndexOf('%',i)     // get index of next '%'
-        if n = -1 || n = last then
-            // non-parse case & end
-            let tl = Token( path.Substring(i,n - i) ) :: acc
-            Handlef(tl,(fun (o:obj) -> o :?> 'T |> fn))      
-        else
-            let fmtc = path.[n + 1]
-            if fmtc = '%' then 
-                go (n + 2) (Token( path.Substring(i,n - i) ) :: acc)
-            else 
-                match formatStringMap.TryGet fmtc with
-                | false, prs ->
-                    failwith <| sprintf "Invalid parse char in path %s, pos: %i, char: %c" path n fmtc
-                | true , prs ->
-                    go (n + 2) (Parse(prs)::acc)
-    go 0 []
-
-//
+/// Router handle compiler
+/////////////////////////////////
 
 let router (paths: PathNode list) =
     
@@ -271,17 +255,33 @@ let router (paths: PathNode list) =
                 
         | None ->
 
-    //using now compiled arrays, provide handler to process path queries
-    fun ctx ->
-        runPath aryNodes fnNodes ctx.Request.Path.Value ctx        
+    let runPath (path:string) =
+        
 
-// handler functions
+    //use compiled instruciton & function arrays to process path queries
+    fun ctx ->
+        let path = ctx.Request.Path.Value
+        
+        let rec go p n rt =
+            match (byte path.[p]) = nodes.[n].Char with
+            | true ->
+                match n = (int nodes.[n].Hop) with
+                | true -> Some(fns.[n])
+                | false -> go (p + 1) (int nodes.[n].Hop) nodes.[n].Retry          
+            | false ->
+                match nodes.[n].Instr with
+                | Instr.Retry -> go (p + 1) (n + 1) acc
+                | _ -> None
+        go 0 0 []     
+
+/// handler functions (only 2 needed thus far, )
+/////////////////////
+
 let inline route (path:string) = PathNode(Route path)
 
 // type Bindy() =
 //     member x.EatMe<'U,'T> (sf:StringFormat<'U,'T>) (fn : 'T -> HttpHandler) (v2:obj) = v2 :?> 'T |> fn
 // let bindy = Bindy()
-
 let inline routef (fmt:StringFormat<'U,'T>) (fn:'T -> HttpHandler) =
     let path = fmt.Value
     let last = path.Length - 1
@@ -304,6 +304,8 @@ let inline routef (fmt:StringFormat<'U,'T>) (fn:'T -> HttpHandler) =
                     go (n + 2) (Parse(prs)::acc)
     go 0 []
 
+/// Testing
+////////////////////////////////
 let text (v:string) = fun (ctx:HttpContext) -> ctx |> Some |> Task.FromResult 
 let pn = route "/about"
 let pn2 = pn >=> text "about"
