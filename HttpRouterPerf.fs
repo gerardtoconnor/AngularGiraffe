@@ -1,5 +1,6 @@
 module Giraffe.HttpRouter
 
+open NonStructuralComparison
 open System.Threading.Tasks
 open Giraffe.Task
 open Giraffe.HttpHandlers
@@ -210,7 +211,6 @@ let router (paths: PathNode list) =
     let ary = ResizeArray<AryNode>()
     let fns = ResizeArray<HandleFn>()
 
-    
     let rec go (n:CNode) = 
         let addEdges (dict:Dictionary<_,_>) =
             let edgeLast = dict.Count - 1
