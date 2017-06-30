@@ -213,32 +213,61 @@ let router (paths: PathNode list) =
     
     let rec go (n:CNode) = 
         let addEdges (dict:Dictionary<_,_>) =
-            let edgeCount = dict.Count
+            let edgeLast = dict.Count - 1
+            let ipos = ary.Count // take snapshot of initial position to update placeholders later (next node)
             let nodes , _ = 
                 dict 
-                |> Seq.fold (fun (nodes,ec) kvp ->  
-                                AryNode(kvp.Key,0,if ec <= 1 then Instr.Next else Instr.Retry) |> ary.Add
-                                let nacc = kvp.Value :: acc
-                                nacc,(ec - 1)) ([],edgeCount)
-
+                |> Seq.fold
+                    (fun (nodes,ec) kvp ->
+                        if ec >= edgeLast then 
+                            AryNode(kvp.Key,ary.Count,Instr.Next) |> ary.Add
+                            go kvp.Value // !! Run path for last node now (so on next ittr arycount updated )
+                            nodes,ec //should always be final fold
+                        else
+                            // create placeholder retry array from edge chars, last is next into its path,
+                            // these will be updated after child runs with relevant hop index numbers 
+                            AryNode(kvp.Key,0,Instr.Retry) |> ary.Add
+                        // paths computed back to front (to allow last cont) so put in list
+                            (ec,kvp.Value) :: nodes ,(ec + 1) )
+                    ([],0)
+            
+            // now using nodelist, with placeholders in, compute child branches & update placeholders
+            // with postiions each time
             nodes 
-            |> List.fold (fun acc node ->  
-                            let nacc = (ary.Count - 1) :: acc
-                            go kvp.Value 
-                            nacc ) []
+            |> List.iter (fun acc (i,node) ->  
+                            let onode = ary.[ipos + i] // get place holder
+                            ary.[ipos + i] <- AryNode(onode.Char,ary.Count,onode.Instr) // update placeholder with valid hop 
+                            go node )
+
+        let rec addFunctions (fls: HandleFn list) =
+            match fls with
+            | [] -> ()
+            | h :: t ->
+                match h with
+                | HandleFn h        ->  // plain handler
+                    () // this overlaps with the End Fn and not possible !?!?
+                | ParseStart (i,p)  -> // argCount * parser
+                    
+                | ParseMid (i,p)    -> // argIndex * parser
+                | ParseComplete (ta,ofh)   -> // types * fn 
+                | ParseApplyEnd (ta,p,ofh) -> // types * parser * fn
+
 
         match n.EndFn with
         | Some (h:HttpHandler) -> 
-            match n.Edges.Count , n.FnList with
-            | 0  , [] -> // No Edges or functions other then end  
+            match n.Edges.Count , n.FnList.IsEmpty with
+            | 0  , true -> // No Edges or functions other then end  
+                AryNode(n.Char,fns.Count,Instr.FnEnd) |> ary.Add // fns.Count = next index about to be added
                 fns.Add (HandleFn h)
-                AryNode(n.Char,fns.Count - 1,Instr.FnEnd) |> ary.Add
                 //end
-            | ec , [] -> // additional Edges as well as ending
-                fns.Add (HandleFn h)
-                AryNode(n.Char,fns.Count - 1,Instr.FnEndOrNext) |> ary.Add
-                let ipos = ary.Count - 1
-                let indexs = addEdges n.Edges
+            | ec , true -> // additional Edges as well as ending
+                AryNode(n.Char,fns.Count,Instr.FnEndOrNext) |> ary.Add
+                fns.Add (HandleFn h) 
+                addEdges n.Edges
+            | 0 , false -> // function continuations ...
+                
+                AryNode(n.Char,fns.Count,Instr.FnEndOrNext) |> ary.Add            
+
                 
         | None ->
 
