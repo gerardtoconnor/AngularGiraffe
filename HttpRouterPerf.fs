@@ -93,18 +93,22 @@ type HandlerMap =
 | Handlef of int * (PathChunk list) * (obj -> HttpHandler)
 
 type HandleFn =
-| HandleFn      of HttpHandler      // plain handler 
-| ParseStart    of int * Parser     // argCount * parser
-| ParseMid      of int * Parser     // argIndex * parser
-| ParseComplete of (obj [] -> HttpHandler) // types * fn 
-| ParseApplyEnd of Parser * (obj [] -> HttpHandler) // types * parser * fn
+| HandleFn            of HttpHandler      // plain handler 
+| ParseStart          of int * Parser     // argCount * parser
+| ParseMid            of int * Parser     // argIndex * parser
+| ParseCompleteSingle of (obj -> HttpHandler) // types * fn 
+| ParseApplyEndSingle of Parser * (obj -> HttpHandler) // types * parser * fn
+| ParseCompleteTuple  of (obj [] -> HttpHandler) // types * fn 
+| ParseApplyEndTuple  of Parser * (obj [] -> HttpHandler) // types * parser * fn
 
 type CHandleFn =
-| CHandleFn      of HttpHandler      // plain handler 
-| CParseStart    of int * Parser * CNode     // argCount * parser
-| CParseMid      of int * Parser * CNode    // argIndex * parser
-| CParseComplete of (obj [] -> HttpHandler) // types * fn 
-| CParseApplyEnd of Parser * (obj [] -> HttpHandler) // types * parser * fn
+| CHandleFn            of HttpHandler      // plain handler 
+| CParseStart          of int * Parser * CNode     // argCount * parser
+| CParseMid            of int * Parser * CNode    // argIndex * parser
+| CParseCompleteSingle of (obj -> HttpHandler) // types * fn 
+| CParseApplyEndSingle of Parser * (obj -> HttpHandler) // types * parser * fn
+| CParseCompleteTuple  of (obj [] -> HttpHandler) // types * fn 
+| CParseApplyEndTuple  of Parser * (obj [] -> HttpHandler) // types * parser * fn
 
 // tree compression node (temporary structure to compress paths to tree before laying array)
 and CNode(c:char) =
@@ -145,14 +149,20 @@ and CNode(c:char) =
                 match pcl with
                 | [] -> n
                 | [Parse c] -> // completes in match
-                    tary.[argIdx] <- typeMap c
-                    let oamap = getTplFn ()
-                    CParseApplyEnd(formatMap.[c],oamap >> omap) |>  n.AddFn
+                    if argCount > 1 then
+                        tary.[argIdx] <- typeMap c
+                        let oamap = getTplFn ()
+                        CParseApplyEndTuple(formatMap.[c],oamap >> omap) |>  n.AddFn
+                    else
+                        CParseApplyEndSingle(formatMap.[c],omap) |>  n.AddFn
                     n
                 | [Token t] -> // completes on token
                     let cnode = x.PathTraverse t
-                    let oamap = getTplFn ()
-                    CParseComplete(oamap >> omap) |> n.AddFn
+                    if argCount > 1 then
+                        let oamap = getTplFn ()
+                        CParseCompleteTuple(oamap >> omap) |> n.AddFn
+                    else
+                        CParseCompleteTuple(omap) |> n.AddFn
                     n
                 | head :: tail ->
                     match head with
@@ -218,6 +228,12 @@ let inline (>=>) a b = (?<-) ComposeExtension a b
 /// Router handle compiler
 /////////////////////////////////
 
+type ParseState(argCount:int) = {
+    member val Retry = 0 with get,set
+    member val Parsers with 
+
+}
+
 let router (paths: PathNode list) =
     
     let nary,fary = 
@@ -227,6 +243,15 @@ let router (paths: PathNode list) =
         let rec go (n:CNode) = 
             
             let rec mapFuncs (fnl:CHandleFn list) =
+                let inline completionFn (t:CHandleFn list) (fn:unit -> HandleFn) =
+                    if t.IsEmpty then
+                        AryNode('_',fns.Count, Instr.FnFinish ) |> ary.Add
+                        fn () |> fns.Add
+                    else
+                        AryNode('_',fns.Count, Instr.FnFinishOrNext ) |> ary.Add
+                        fn () |> fns.Add
+                        mapFuncs t
+
                 match fnl with
                 | [] -> ()
                 | h :: t ->
@@ -243,22 +268,42 @@ let router (paths: PathNode list) =
                         ParseMid(i,p) |> fns.Add
                         go pn
                         mapFuncs t
-                    | CParseComplete (ofh)   -> // types * fn
-                        if t.IsEmpty then
-                            AryNode('_',fns.Count, Instr.FnFinish ) |> ary.Add
-                            ParseComplete(ofh) |> fns.Add
-                        else
-                            AryNode('_',fns.Count, Instr.FnFinishOrNext ) |> ary.Add
-                            ParseComplete(ofh) |> fns.Add
-                            mapFuncs t
-                    | CParseApplyEnd (p,ofh) -> // types * parser * fn
-                        if t.IsEmpty then
-                            AryNode('_',fns.Count, Instr.FnFinish ) |> ary.Add
-                            ParseApplyEnd(p,ofh) |> fns.Add
-                        else
-                            AryNode('_',fns.Count, Instr.FnFinishOrNext ) |> ary.Add
-                            ParseApplyEnd(p,ofh) |> fns.Add
-                            mapFuncs t
+                    | CParseCompleteSingle (ofh)   -> // types * fn
+                        completionFn t (fun () -> ParseCompleteSingle(ofh))
+                        // if t.IsEmpty then
+                        //     AryNode('_',fns.Count, Instr.FnFinish ) |> ary.Add
+                        //     ParseCompleteSingle(ofh) |> fns.Add
+                        // else
+                        //     AryNode('_',fns.Count, Instr.FnFinishOrNext ) |> ary.Add
+                        //     ParseCompleteSingle(ofh) |> fns.Add
+                        //     mapFuncs t
+                    | CParseCompleteTuple (ofh)   -> // types * fn
+                        completionFn t (fun () -> ParseCompleteTuple(ofh))
+                        // if t.IsEmpty then
+                        //     AryNode('_',fns.Count, Instr.FnFinish ) |> ary.Add
+                        //     ParseCompleteTuple(ofh) |> fns.Add
+                        // else
+                        //     AryNode('_',fns.Count, Instr.FnFinishOrNext ) |> ary.Add
+                        //     ParseCompleteTuple(ofh) |> fns.Add
+                        //     mapFuncs t
+                    | CParseApplyEndSingle (prs,ofh) -> // types * parser * fn
+                        completionFn t (fun () -> ParseApplyEndSingle(prs,ofh))
+                        // if t.IsEmpty then
+                        //     AryNode('_',fns.Count, Instr.FnFinish ) |> ary.Add
+                        //     ParseApplyEndSingle(p,ofh) |> fns.Add
+                        // else
+                        //     AryNode('_',fns.Count, Instr.FnFinishOrNext ) |> ary.Add
+                        //     ParseApplyEndSingle(p,ofh) |> fns.Add
+                        //     mapFuncs t
+                    | CParseApplyEndTuple (prs,ofh) -> // types * parser * fn
+                        completionFn t (fun () -> ParseApplyEndTuple(prs,ofh))
+                        // if t.IsEmpty then
+                        //     AryNode('_',fns.Count, Instr.FnFinish ) |> ary.Add
+                        //     ParseApplyEndTuple(p,ofh) |> fns.Add
+                        // else
+                        //     AryNode('_',fns.Count, Instr.FnFinishOrNext ) |> ary.Add
+                        //     ParseApplyEndTuple(p,ofh) |> fns.Add
+                        //     mapFuncs t
             
             let addEdges (dict:Dictionary<_,_>) (fnl:CHandleFn list) =
                 if dict.Count = 0 then
@@ -305,19 +350,10 @@ let router (paths: PathNode list) =
                     AryNode(n.Char,fns.Count,Instr.FnEnd) |> ary.Add // fns.Count = next index about to be added
                     fns.Add (HandleFn h)
                     //end
-                | ec , true -> // additional Edges as well as ending
+                | _ , _ -> // additional Edges as well as ending
                     AryNode(n.Char,fns.Count,Instr.FnEndOrNext) |> ary.Add
                     fns.Add (HandleFn h)
-                    addEdges n.Edges []
-                | 0 , false -> // function continuations with no path edges ...
-                    AryNode(n.Char,fns.Count,Instr.FnEndOrNext) |> ary.Add 
-                    fns.Add (HandleFn h)
-                    mapFuncs n.FnList
-                | ec , false -> // path edges added first and then cont to functions
-                    AryNode(n.Char,fns.Count,Instr.FnEndOrNext) |> ary.Add 
-                    fns.Add (HandleFn h)
-                    addEdges n.Edges n.FnList
-                    
+                    addEdges n.Edges n.FnList    
             | None ->
                 addEdges n.Edges n.FnList
 
@@ -331,11 +367,24 @@ let router (paths: PathNode list) =
                     addPaths t n
         addPaths paths root
         ary.ToArray() , fns.ToArray()
+        
+    let NoneTask () = Task.FromResult None
 
     //use compiled instruciton & function arrays to process path queries
     fun ctx ->
         let path : string = ctx.Request.Path.Value
         
+        let endProcess p n failFn =
+            if p = path.Length - 1 then
+                match fary.[int nary.[n].Hop] with
+                | HandleFn f -> f ctx
+                | ParseApplyEndSingle (prs,fn) ->
+                    match prs path p (path.Length - 1) with
+                    | struct(true,v) -> (v |> fn) ctx
+                    | struct(false,_)-> failFn ()
+                | xfn -> failwith(sprintf "unhandled funciton match case %A" xfn)
+            else failFn ()
+
         let parsing p n state =
                 ()
             
@@ -346,28 +395,48 @@ let router (paths: PathNode list) =
             | Next ->
                 if   nary.[n].Char = (byte path.[p]) 
                 then go (p+1) (n+1)
-                else Task.FromResult None
+                else NoneTask ()
+            | Retry ->
+                if   nary.[n].Char = (byte path.[p]) 
+                then go (p+1) (int nary.[n].Hop)
+                else NoneTask ()
             | FnEnd ->
+                endProcess p n NoneTask
+                // if p = path.Length - 1 then
+                //     match fary.[int nary.[n].Hop] with
+                //     | HandleFn f -> f ctx
+                //     | ParseApplyEndSingle (prs,fn) ->
+                //         match prs path p (path.Length - 1) with
+                //         | struct(true,v) -> (v |> fn) ctx
+                //         | struct(false,_)-> NoneTask ()
+                //     | xfn -> failwith(sprintf "unhandled funciton match case %A" xfn)
+                // else NoneTask ()
+            | FnFinish ->
+                // verify differnce between finish and End as duplicated
                 match fary.[int nary.[n].Hop] with
                 | HandleFn f -> f ctx
-                | ParseApplyEnd (prs,fn) ->
+                | ParseApplyEndSingle (prs,fn) ->
                     match prs path p (path.Length - 1) with
-                    | struct(true,v) -> v |> fn
-                    | struct(false,_)->
-                | xfn -> failwith(sprintf "unhandled funciton match case %A" xfn)
-            | FnFinish
+                    | struct(true,v) -> (v |> fn) ctx
+                    | struct(false,_)-> NoneTask ()
+                | xfn -> failwith(sprintf "unhandled Finish funciton match case %A" xfn)
+            | FnEndOrNext ->
+                endProcess p n (fun () -> go p (n+1)) // <<<<< p / p + 1 ??
+                // match fary.[int nary.[n].Hop] with
+                // | HandleFn f -> f ctx
+                // | ParseApplyEndSingle (prs,fn) ->
+                //     match prs path p (path.Length - 1) with
+                //     | struct(true,v) -> (v |> fn) ctx
+                //     | struct(false,_)-> Task.FromResult None
+                // | xfn -> failwith(sprintf "unhandled funciton match case %A" xfn)
+            | FnContinue ->
+                match fary.[int nary.[n].Hop] with
+                | ParseStart (i,prs) ->
 
+                | xfn -> failwith(sprintf "unhandled Continue funciton match case %A" xfn) 
+                parsing 
 
-            match (byte path.[p]) = nodes.[n].Char with
-            | true ->
-                match n = (int nodes.[n].Hop) with
-                | true -> Some(fns.[n])
-                | false -> go (p + 1) (int nodes.[n].Hop) nodes.[n].Retry          
-            | false ->
-                match nodes.[n].Instr with
-                | Instr.Retry -> go (p + 1) (n + 1) acc
-                | _ -> None
-        go 0 0 []     
+        go 0 0    
 
 /// handler functions (only 2 needed thus far, )
 /////////////////////
