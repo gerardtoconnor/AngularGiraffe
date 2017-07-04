@@ -5,6 +5,7 @@ open System.Threading.Tasks
 open Giraffe.Task
 open Giraffe.HttpHandlers
 open FSharp.Core.Printf
+open Microsoft.FSharp.Reflection
 open System.Collections.Generic
 open Giraffe.HttpRouter.RouterParsers
 
@@ -48,6 +49,7 @@ type Instr =
 | FnContinue = 3uy  // a partial match/subroute that allows matching to cont (move next) while fns pulled
 | FnEnd = 4uy
 | FnEndOrNext = 5uy       // end function at last character (Handler/MatchComplete)
+| FnEndOrCont = 5uy
 | FnFinish = 6uy    // parse mid to end path function represents (MatchToEnd)
 | FnFinishOrNext = 7uy    // parse midToEnd and match, try match next before parse finish /%
 | FnFinishOrRetry = 8uy  // where at last, FnFinish, otherwise Retry eg '/' , '/about/ -> '/' has both functionality
@@ -84,23 +86,28 @@ type PathChunk =
 
 type PathExpr =
 | Route of string
-| Routef of (PathChunk list) * (obj -> HttpHandler)
+| Routef of int * (PathChunk list) * (obj -> HttpHandler)
 
 type HandlerMap =
 | Handle of string * HttpHandler
-| Handlef of (PathChunk list) * (obj -> HttpHandler)
+| Handlef of int * (PathChunk list) * (obj -> HttpHandler)
 
 type HandleFn =
 | HandleFn      of HttpHandler      // plain handler 
 | ParseStart    of int * Parser     // argCount * parser
 | ParseMid      of int * Parser     // argIndex * parser
-| ParseComplete of (System.Type []) * (obj -> HttpHandler) // types * fn 
-| ParseApplyEnd of (System.Type []) * Parser * (obj -> HttpHandler) // types * parser * fn
-| ParseMulti    of HandleFn list
+| ParseComplete of (obj [] -> HttpHandler) // types * fn 
+| ParseApplyEnd of Parser * (obj [] -> HttpHandler) // types * parser * fn
+
+type CHandleFn =
+| CHandleFn      of HttpHandler      // plain handler 
+| CParseStart    of int * Parser * CNode     // argCount * parser
+| CParseMid      of int * Parser * CNode    // argIndex * parser
+| CParseComplete of (obj [] -> HttpHandler) // types * fn 
+| CParseApplyEnd of Parser * (obj [] -> HttpHandler) // types * parser * fn
 
 // tree compression node (temporary structure to compress paths to tree before laying array)
-type CNode(c:char) =
-        
+and CNode(c:char) =
     member val Char = c with get
     member val Edges = Dictionary<char,CNode>() with get
     member val EndFn = None : HttpHandler option with get,set
@@ -112,34 +119,58 @@ type CNode(c:char) =
             let node = CNode(v)
             x.Edges.Add(v,node)
             node
-    // member x.AddFn (fn:HandlerMap) =
-    //     match fn with
-    //     | Handle (_,f) -> x.EndFn <- Some f
-    //     | ofn -> x.FnList <- ofn :: x.FnList
-
+    member x.PathTraverse (p:string) =
+        let rec go i (n:CNode) =
+            if i < p.Length 
+            then go (i + 1) (n.PathStep p.[i])
+            else n
+        go 0 x
+    member x.AddFn (fn:CHandleFn) =
+        match fn with
+        | CHandleFn f -> x.EndFn <- Some f
+        | ofn -> x.FnList <- ofn :: x.FnList
     member x.AddHandlerMap (hm:HandlerMap) =
-        let addPath (p:string) =
-            let rec go i (n:CNode) =
-                if i < p.Length 
-                then go (i + 1) (n.PathStep p.[i])
-                else n
-            go 0 x
-            
         match hm with
         | Handle (path,fn) -> 
-            let fnode = addPath path
+            let fnode = x.PathTraverse path
             fnode.EndFn <- Some fn
-        | Handlef (pcl,omap) ->
-            let argCount = pcl |> List.fold (fun acc v -> match v with | Parse _ -> acc + 1 | _ -> acc ) 0
-            let rec go ls (n:CNode) =
+            fnode
+        | Handlef (argCount,pcl,omap) ->
+            //let argCount = pcl |> List.fold (fun acc v -> match v with | Parse _ -> acc + 1 | _ -> acc ) 0
+            let tary = Array.zeroCreate<System.Type>(argCount)
+            let getTplFn () =
+                let tupleType = FSharpType.MakeTupleType tary
+                FSharpValue.PreComputeTupleConstructor(tupleType)
+            let rec go ls (n:CNode) (argIdx:int) =
                 match pcl with
-                | [] -> 
+                | [] -> n
+                | [Parse c] -> // completes in match
+                    tary.[argIdx] <- typeMap c
+                    let oamap = getTplFn ()
+                    CParseApplyEnd(formatMap.[c],oamap >> omap) |>  n.AddFn
+                    n
+                | [Token t] -> // completes on token
+                    let cnode = x.PathTraverse t
+                    let oamap = getTplFn ()
+                    CParseComplete(oamap >> omap) |> n.AddFn
+                    n
                 | head :: tail ->
                     match head with
                     | Token t ->
-                        let cnode = n.addPath t
-                        go 
-                    | Parse p ->            
+                        let cnode = n.PathTraverse t
+                        go tail cnode argIdx
+                    | Parse c ->
+                        if argIdx = 0 then
+                            tary.[0] <- typeMap c
+                            let cnode = CNode('_')
+                            CParseStart(argCount,formatMap.[c],cnode) |> n.AddFn
+                            go tail cnode (argIdx + 1)
+                        else
+                            tary.[argIdx] <- typeMap c
+                            let cnode = CNode('_')
+                            CParseMid(argIdx,formatMap.[c],cnode) |> n.AddFn
+                            go tail cnode (argIdx + 1)
+            go pcl x 0
 
 [<Struct>]
 type AryNode =
@@ -148,9 +179,6 @@ type AryNode =
     val Instr : Instr
     new (char,hop,instr) = { Char = char ; Hop = hop ; Instr = instr }
     new (char:char,hop:int,instr) = { Char = byte char ; Hop = uint16 hop ; Instr = instr }
-
-
-
 
 /// PathNode
 /////////////////////////
@@ -161,8 +189,8 @@ type PathNode(pe : PathExpr) =
     
     member x.GetBinding () =
         match pe , x.HandleChain with
-        | Routef (pcl,fn) , Some hc -> Handlef(pcl,(fun (o:obj) -> fn o >=> hc ))
-        | Routef (pcl,fn) , None    -> Handlef(pcl,fn)
+        | Routef (ac,pcl,fn) , Some hc -> Handlef(ac,pcl,(fun (o:obj) -> fn o >=> hc ))
+        | Routef (ac,pcl,fn) , None    -> Handlef(ac,pcl,fn)
         | Route path      , Some hc -> Handle(path,hc)
         | Route path      , None    -> failwith "no handlers were provided for path:" + path 
     member pn.AddHandler (h:HttpHandler) =
@@ -192,77 +220,140 @@ let inline (>=>) a b = (?<-) ComposeExtension a b
 
 let router (paths: PathNode list) =
     
-    let ary = ResizeArray<AryNode>()
-    let fns = ResizeArray<HandleFn>()
+    let nary,fary = 
+        let ary = ResizeArray<AryNode>()
+        let fns = ResizeArray<HandleFn>()
 
-    let rec go (n:CNode) = 
-        let addEdges (dict:Dictionary<_,_>) =
-            let edgeLast = dict.Count - 1
-            let ipos = ary.Count // take snapshot of initial position to update placeholders later (next node)
-            let nodes , _ = 
-                dict 
-                |> Seq.fold
-                    (fun (nodes,ec) kvp ->
-                        if ec >= edgeLast then 
-                            AryNode(kvp.Key,ary.Count,Instr.Next) |> ary.Add
-                            go kvp.Value // !! Run path for last node now (so on next ittr arycount updated )
-                            nodes,ec //should always be final fold
-                        else
-                            // create placeholder retry array from edge chars, last is next into its path,
-                            // these will be updated after child runs with relevant hop index numbers 
-                            AryNode(kvp.Key,0,Instr.Retry) |> ary.Add
-                        // paths computed back to front (to allow last cont) so put in list
-                            (ec,kvp.Value) :: nodes ,(ec + 1) )
-                    ([],0)
+        let rec go (n:CNode) = 
             
-            // now using nodelist, with placeholders in, compute child branches & update placeholders
-            // with postiions each time
-            nodes 
-            |> List.iter (fun acc (i,node) ->  
-                            let onode = ary.[ipos + i] // get place holder
-                            ary.[ipos + i] <- AryNode(onode.Char,ary.Count,onode.Instr) // update placeholder with valid hop 
-                            go node )
+            let rec mapFuncs (fnl:CHandleFn list) =
+                match fnl with
+                | [] -> ()
+                | h :: t ->
+                    match h with
+                    | CHandleFn h        ->  // plain handler
+                        () // this overlaps with the End Fn and not possible !?!?
+                    | CParseStart (i,p,pn)  -> // argCount * parser
+                        AryNode('_',fns.Count, Instr.FnContinue ) |> ary.Add
+                        ParseStart(i,p) |> fns.Add
+                        go pn
+                        mapFuncs t                  
+                    | CParseMid (i,p,pn)    -> // argIndex * parser
+                        AryNode('_',fns.Count, Instr.FnContinue ) |> ary.Add
+                        ParseMid(i,p) |> fns.Add
+                        go pn
+                        mapFuncs t
+                    | CParseComplete (ofh)   -> // types * fn
+                        if t.IsEmpty then
+                            AryNode('_',fns.Count, Instr.FnFinish ) |> ary.Add
+                            ParseComplete(ofh) |> fns.Add
+                        else
+                            AryNode('_',fns.Count, Instr.FnFinishOrNext ) |> ary.Add
+                            ParseComplete(ofh) |> fns.Add
+                            mapFuncs t
+                    | CParseApplyEnd (p,ofh) -> // types * parser * fn
+                        if t.IsEmpty then
+                            AryNode('_',fns.Count, Instr.FnFinish ) |> ary.Add
+                            ParseApplyEnd(p,ofh) |> fns.Add
+                        else
+                            AryNode('_',fns.Count, Instr.FnFinishOrNext ) |> ary.Add
+                            ParseApplyEnd(p,ofh) |> fns.Add
+                            mapFuncs t
+            
+            let addEdges (dict:Dictionary<_,_>) (fnl:CHandleFn list) =
+                if dict.Count = 0 then
+                    mapFuncs fnl
+                else
+                    let edgeLast = dict.Count - 1
+                    let ipos = ary.Count // take snapshot of initial position to update placeholders later (next node)
+                    let nodes , _ = 
+                        dict 
+                        |> Seq.fold
+                            (fun (nodes,ec) kvp ->
+                                if ec >= edgeLast then 
+                                    if fnl.IsEmpty then 
+                                        AryNode(kvp.Key,ary.Count,Instr.Next) |> ary.Add
+                                        go kvp.Value // !! Run path for last node now (so on next ittr arycount updated )
+                                        nodes,ec //should always be final fold
+                                    else
+                                        AryNode(kvp.Key,0,Instr.Retry) |> ary.Add
 
-        let rec addFunctions (fls: HandleFn list) =
-            match fls with
+                                        mapFuncs fnl // add functions to end                                
+                                        
+                                        (ec,kvp.Value) :: nodes ,(ec + 1)
+                                else
+                                    // create placeholder retry array from edge chars, last is next into its path,
+                                    // these will be updated after child runs with relevant hop index numbers 
+                                    AryNode(kvp.Key,0,Instr.Retry) |> ary.Add
+                                // paths computed back to front (to allow last cont) so put in list
+                                    (ec,kvp.Value) :: nodes ,(ec + 1) 
+                            ) ([],0)
+                    
+                    // now using nodelist, with placeholders in, compute child branches & update placeholders
+                    // with postiions each time
+                    nodes 
+                    |> List.iter (fun (i,node) ->  
+                                    let onode = ary.[ipos + i] // get place holder
+                                    ary.[ipos + i] <- AryNode(onode.Char,uint16 ary.Count,onode.Instr) // update placeholder with valid hop 
+                                    go node // run this node to populate array
+                                    )
+
+            match n.EndFn with
+            | Some (h:HttpHandler) -> 
+                match n.Edges.Count , n.FnList.IsEmpty with
+                | 0  , true -> // No Edges or functions other then end  
+                    AryNode(n.Char,fns.Count,Instr.FnEnd) |> ary.Add // fns.Count = next index about to be added
+                    fns.Add (HandleFn h)
+                    //end
+                | ec , true -> // additional Edges as well as ending
+                    AryNode(n.Char,fns.Count,Instr.FnEndOrNext) |> ary.Add
+                    fns.Add (HandleFn h)
+                    addEdges n.Edges []
+                | 0 , false -> // function continuations with no path edges ...
+                    AryNode(n.Char,fns.Count,Instr.FnEndOrNext) |> ary.Add 
+                    fns.Add (HandleFn h)
+                    mapFuncs n.FnList
+                | ec , false -> // path edges added first and then cont to functions
+                    AryNode(n.Char,fns.Count,Instr.FnEndOrNext) |> ary.Add 
+                    fns.Add (HandleFn h)
+                    addEdges n.Edges n.FnList
+                    
+            | None ->
+                addEdges n.Edges n.FnList
+
+        let root = CNode('/')
+        let rec addPaths (ls:PathNode list) (n:CNode) = 
+            match ls with
             | [] -> ()
             | h :: t ->
-                match h with
-                | HandleFn h        ->  // plain handler
-                    () // this overlaps with the End Fn and not possible !?!?
-                | ParseStart (i,p)  -> // argCount * parser
-                    
-                | ParseMid (i,p)    -> // argIndex * parser
-                | ParseComplete (ta,ofh)   -> // types * fn 
-                | ParseApplyEnd (ta,p,ofh) -> // types * parser * fn
-
-
-        match n.EndFn with
-        | Some (h:HttpHandler) -> 
-            match n.Edges.Count , n.FnList.IsEmpty with
-            | 0  , true -> // No Edges or functions other then end  
-                AryNode(n.Char,fns.Count,Instr.FnEnd) |> ary.Add // fns.Count = next index about to be added
-                fns.Add (HandleFn h)
-                //end
-            | ec , true -> // additional Edges as well as ending
-                AryNode(n.Char,fns.Count,Instr.FnEndOrNext) |> ary.Add
-                fns.Add (HandleFn h) 
-                addEdges n.Edges
-            | 0 , false -> // function continuations ...
-                
-                AryNode(n.Char,fns.Count,Instr.FnEndOrNext) |> ary.Add            
-
-                
-        | None ->
-
-    let runPath (path:string) =
-        
+                    let cnode = h.GetBinding() |> n.AddHandlerMap
+                    addPaths h.ChildRoute cnode
+                    addPaths t n
+        addPaths paths root
+        ary.ToArray() , fns.ToArray()
 
     //use compiled instruciton & function arrays to process path queries
     fun ctx ->
-        let path = ctx.Request.Path.Value
+        let path : string = ctx.Request.Path.Value
         
-        let rec go p n rt =
+        let parsing p n state =
+                ()
+            
+        //pathIndex -> nodeIndex 
+        let rec go p n =
+            
+            match nary.[n].Instr with
+            | Next ->
+                if   nary.[n].Char = (byte path.[p]) 
+                then go (p+1) (n+1)
+                else Task.FromResult None
+            | FnEnd ->
+                match fary.[int nary.[n].Hop] with
+                | HandleFn f -> f ctx
+                | xfn -> failwith(sprintf "unhandled funciton match case %A" xfn)
+            | FnFinish
+
+
             match (byte path.[p]) = nodes.[n].Char with
             | true ->
                 match n = (int nodes.[n].Hop) with
@@ -286,23 +377,23 @@ let inline routef (fmt:StringFormat<'U,'T>) (fn:'T -> HttpHandler) =
     let path = fmt.Value
     let last = path.Length - 1
 
-    let rec go i acc =
+    let rec go i acc argCount =
         let n = path.IndexOf('%',i)     // get index of next '%'
         if n = -1 || n = last then
             // non-parse case & end
             let tl = Token( path.Substring(i,n - i) ) :: acc
-            PathNode(Routef(tl,(fun (o:obj) -> o :?> 'T |> fn)))       
+            PathNode(Routef(argCount,tl,(fun (o:obj) -> o :?> 'T |> fn)))       
         else
             let fmtc = path.[n + 1]
             if fmtc = '%' then 
-                go (n + 2) (Token( path.Substring(i,n - i) ) :: acc)
+                go (n + 2) (Token( path.Substring(i,n - i) ) :: acc) argCount
             else 
                 match formatMap.TryGet fmtc with
                 | false, prs ->
                     failwith <| sprintf "Invalid parse char in path %s, pos: %i, char: %c" path n fmtc
                 | true , prs ->
-                    go (n + 2) (Parse(prs)::acc)
-    go 0 []
+                    go (n + 2) (Parse(prs)::acc) (argCount + 1)
+    go 0 [] 0
 
 /// Testing
 ////////////////////////////////
