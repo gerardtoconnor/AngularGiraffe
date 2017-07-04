@@ -235,6 +235,7 @@ type ParseState(argCount:int) =
     member val PEnd = Array.zeroCreate<int>(argCount) with get,set
     member val MaxAttempt = 0 with get,set
     member val CurArg = 0 with get,set
+    member val TotalArgs = argCount with get
 
 let router (paths: PathNode list) =
     
@@ -370,7 +371,7 @@ let router (paths: PathNode list) =
         addPaths paths root
         ary.ToArray() , fns.ToArray()
         
-    let NoneTask () = Task.FromResult None
+    let inline noneTask () = Task.FromResult None
 
     //use compiled instruciton & function arrays to process path queries
     fun ctx ->
@@ -387,28 +388,68 @@ let router (paths: PathNode list) =
                 | xfn -> failwith(sprintf "unhandled funciton match case %A" xfn)
             else failFn ()
 
-        let rec parsing p n (state:ParseState) =
-            match nary.[n].Instr with
-            | Next ->
-                if   nary.[n].Char = (byte path.[p]) 
-                then parsing (p+1) (n+1) state
-                else parsing (state.PStart.[state.CurArg]) (state.Retry) state
-            | FnFinish ->
-                match fary.[int nary.[n].Hop] with
-                | ParseApplyEndTuple (prs,fn) ->
-                    let argCount = state.Parsers.Length
-                    let results = Array.zeroCreate<obj>(argCount)
-                    for i in 0 .. argCount - 1 do
-                        
-                    match prs path p (path.Length - 1) with
-                    | struct(true,v) -> (v |> fn) ctx
-                    | struct(false,_)-> NoneTask ()
-                    
-                | ParseCompleteSingle (fn) ->
+        let rec parsing p n (state:ParseState) : Task<HttpContext option> =
+            
+            let tryParse (cont:'T -> Task<HttpContext option>) (fail:unit->Task<HttpContext option>) (pr:struct(bool*'T))   =
+                match pr with
+                | struct(true,v) -> cont v
+                | struct(false,_) -> fail ()
+            
+            let applyParse j (cont:obj [] -> Task<HttpContext option>) (fail:unit->Task<HttpContext option>) =
+                let results = Array.zeroCreate<obj>(state.TotalArgs)
+                let rec pgo i =                
+                    if i >= 0 then
+                        let pfn = state.Parsers.[i]
+                        pfn path state.PStart.[i] state.PEnd.[i]
+                        |> tryParse (fun v ->
+                            results.[i] <- v
+                            pgo (i - 1)
+                        ) fail
+                    else
+                        cont results
+                pgo j
+            
+            if p < path.Length then 
 
-                | ParseCompleteTuple (fn) ->
-
-                | xfn -> failwith(sprintf "unhandled Finish funciton match case %A" xfn)
+                match nary.[n].Instr with
+                | Next ->
+                    if   nary.[n].Char = (byte path.[p]) 
+                    then parsing (p+1) (n+1) state
+                    else parsing (state.PStart.[state.CurArg]) (state.Retry) state
+                | FnFinish ->
+                    match fary.[int nary.[n].Hop] with
+                    | ParseApplyEndTuple (prs,fn) ->
+                        applyParse (state.TotalArgs - 2) (fun results ->
+                            prs path p (path.Length - 1) 
+                            |> tryParse (fun v ->
+                                results.[state.TotalArgs - 1] <- v
+                                (fn results) ctx        
+                                ) noneTask
+                            ) noneTask
+                    | ParseCompleteSingle (fn) ->
+                        state.Parsers.[0] path state.PStart.[0] state.PEnd.[0]
+                        |> tryParse (fun v -> (fn v) ctx) noneTask
+                    | ParseCompleteTuple (fn) ->
+                        applyParse (state.TotalArgs - 1) (fun results -> (fn results) ctx) noneTask
+                    | xfn -> failwith(sprintf "unhandled Finish funciton match case %A" xfn)
+                | FnFinishOrNext ->
+                    match fary.[int nary.[n].Hop] with
+                    | ParseApplyEndTuple (prs,fn) ->
+                        applyParse (state.TotalArgs - 2) (fun results ->
+                            prs path p (path.Length - 1) 
+                            |> tryParse (fun v ->
+                                results.[state.TotalArgs - 1] <- v
+                                (fn results) ctx        
+                                ) (fun () -> 
+                                    parsing (state.PStart.[0]) (n + 1) )
+                            )
+                    | ParseCompleteSingle (fn) ->
+                        state.Parsers.[0] path state.PStart.[0] state.PEnd.[0]
+                        |> tryParse (fun v -> (fn v) ctx ) noneTask
+                    | ParseCompleteTuple (fn) ->
+                        applyParse (state.TotalArgs - 1) (fun results -> (fn results) ctx) 
+                    | xfn -> failwith(sprintf "unhandled Finish funciton match case %A" xfn)
+            else noneTask ()
             
         //pathIndex -> nodeIndex 
         let rec go p n =
@@ -421,7 +462,7 @@ let router (paths: PathNode list) =
             | Retry ->
                 if   nary.[n].Char = (byte path.[p]) 
                 then go (p+1) (int nary.[n].Hop)
-                else NoneTask ()
+                else go (p) (n + 1)
             | FnEnd ->
                 endProcess p n NoneTask
                 // if p = path.Length - 1 then
