@@ -350,6 +350,10 @@ let router (paths: PathNode list) =
             | FnEnd ->
                 match fary.[int nary.[n].Hop] with
                 | HandleFn f -> f ctx
+                | ParseApplyEnd (prs,fn) ->
+                    match prs path p (path.Length - 1) with
+                    | struct(true,v) -> v |> fn
+                    | struct(false,_)->
                 | xfn -> failwith(sprintf "unhandled funciton match case %A" xfn)
             | FnFinish
 
