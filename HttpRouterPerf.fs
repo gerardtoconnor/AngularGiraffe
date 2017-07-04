@@ -228,11 +228,13 @@ let inline (>=>) a b = (?<-) ComposeExtension a b
 /// Router handle compiler
 /////////////////////////////////
 
-type ParseState(argCount:int) = {
+type ParseState(argCount:int) = 
     member val Retry = 0 with get,set
-    member val Parsers with 
-
-}
+    member val Parsers = Array.zeroCreate<Parser>(argCount) with get,set
+    member val PStart = Array.zeroCreate<int>(argCount) with get,set
+    member val PEnd = Array.zeroCreate<int>(argCount) with get,set
+    member val MaxAttempt = 0 with get,set
+    member val CurArg = 0 with get,set
 
 let router (paths: PathNode list) =
     
@@ -385,8 +387,28 @@ let router (paths: PathNode list) =
                 | xfn -> failwith(sprintf "unhandled funciton match case %A" xfn)
             else failFn ()
 
-        let parsing p n state =
-                ()
+        let rec parsing p n (state:ParseState) =
+            match nary.[n].Instr with
+            | Next ->
+                if   nary.[n].Char = (byte path.[p]) 
+                then parsing (p+1) (n+1) state
+                else parsing (state.PStart.[state.CurArg]) (state.Retry) state
+            | FnFinish ->
+                match fary.[int nary.[n].Hop] with
+                | ParseApplyEndTuple (prs,fn) ->
+                    let argCount = state.Parsers.Length
+                    let results = Array.zeroCreate<obj>(argCount)
+                    for i in 0 .. argCount - 1 do
+                        
+                    match prs path p (path.Length - 1) with
+                    | struct(true,v) -> (v |> fn) ctx
+                    | struct(false,_)-> NoneTask ()
+                    
+                | ParseCompleteSingle (fn) ->
+
+                | ParseCompleteTuple (fn) ->
+
+                | xfn -> failwith(sprintf "unhandled Finish funciton match case %A" xfn)
             
         //pathIndex -> nodeIndex 
         let rec go p n =
@@ -432,10 +454,26 @@ let router (paths: PathNode list) =
             | FnContinue ->
                 match fary.[int nary.[n].Hop] with
                 | ParseStart (i,prs) ->
-
-                | xfn -> failwith(sprintf "unhandled Continue funciton match case %A" xfn) 
-                parsing 
-
+                    let ps = ParseState(i)
+                    ps.Parsers.[0] <- prs
+                    ps.PStart.[0] <- p
+                    parsing p n ps
+                | xfn -> failwith(sprintf "unhandled Continue funciton match case %A" xfn)
+            | FnEndOrCont ->
+                endProcess p n (fun () ->
+                    // n = end node
+                    // n + 1 = parse node with '_'
+                    // n + 2 = matching pattern
+                    match fary.[int nary.[n + 1].Hop] with
+                    | ParseStart (i,prs) -> // HACK Parse Node current has '_' with next node being start of match, tidy later
+                        let ps = ParseState(i)
+                        ps.Retry <- n + 2
+                        ps.Parsers.[0] <- prs
+                        ps.PStart.[0] <- p
+                        parsing (p + 1) (n + 2) ps
+                    | xfn -> failwith(sprintf "unhandled Continue funciton match case %A" xfn)                                    
+                )
+               
         go 0 0    
 
 /// handler functions (only 2 needed thus far, )
