@@ -70,8 +70,8 @@ let webApi : HttpHandler =
      GET >=>
             router [
                 routef "/name%sssn%i" (fun (n,s) -> sprintf "your name is [%s] with social security number [%i]" n s |> text)                 
-                route "/" <| text "Hello world, from Giraffe!"
-                route "/test" <| text "Giraffe testing working"
+                route "/" >=> text "Hello world, from Giraffe!"
+                route "/test" >=> text "Giraffe testing working"
                 route "/deep" >=> [
                         route "/hasktag" >=> text "hashtag deep"
                         route "/solo" >=> text "han Solo"
@@ -84,7 +84,7 @@ let webApi : HttpHandler =
                                         AuthTestHandler >=> text "your Authorised" 
                                         setStatusCode 404 >=> text "Not Found"
                                     ]                                  
-                route "/SampleData/WeatherForecasts" <| json (weatherForecasts ())
+                route "/SampleData/WeatherForecasts" >=> json (weatherForecasts ())
                 routef "/value/%s/cats/%s/end" (fun (v1,v2) -> sprintf "we recieved in [%s] and [%s]" v1 v2 |> text)
                 //routef "/value/%s" (fun (v) -> text (v:?> sring))        
             ]   
@@ -127,42 +127,42 @@ let webApi : HttpHandler =
 //             ]
 //         ]
 
-let chooseApi : HttpHandler =
-    choose [
-        route "/" >=> text "Hello world, from Giraffe!"
-        route "/test" >=> text "Giraffe test working"
-        route "/about" >=> text "Giraffe about page!"
-        route "/wheretofindus" >=> text "our location page"
-        route "/ourstory" >=> text "our story page"
-        route "/products" >=> text "product page"
-        route "/delivery" >=> text "delivery page"
-        routef "/data/%s/weather" (fun v -> sprintf "json (weatherForecasts (%s))" v |> text)
-        routef "/value/%s" text 
-        subRoute "/auth" (
-                choose [
-                    route "/dashboard" >=> text "Auth Dashboard"
-                    route "/inbox" >=> text "Auth Inbox"
-                    route "/helpdesk" >=> text "Auth Helpdesk"
-                    routef "/parse%slong%istrings%sand%sIntegers" (fun (a,b,c,d) -> sprintf "%s | %i | %s | %s" a b c d |> text)
-                    routef "token/%s" (fun v -> text ("following token recieved:" + v))                                    
-                    subRoute "/manager" (
-                            choose [
-                                route "/payroll" >=> text "Manager Payroll"
-                                route "/timesheets" >=> text "Manager Timesheets"
-                                route "/teamview" >=> text "Manager Teamview"
-                                routef "/team%ssales%f" (fun (t,s) -> sprintf "team %s had sales of %f" t s |> text)
-                                routef "/accesscode/%i" (fun i -> sprintf "manager access close is %i" i |> text)
-                                subRoute "/executive" (
-                                        choose [
-                                            route "/finance" >=> text "executive finance"
-                                            route "/operations" >=> text "executive operations"
-                                            route "/mis" >=> text "executive mis"
-                                            routef "/area/%s" (sprintf "executive area %s" >> text)
-                                            routef "/area/%s/district/%s/costcode%i" (fun (a,d,c) -> sprintf "executive area %s district %s costcode %s"  a d c |> text)
-                                        ])
-                            ])
-                ])
-    ]
+// let chooseApi : HttpHandler =
+//     choose [
+//         route "/" >=> text "Hello world, from Giraffe!"
+//         route "/test" >=> text "Giraffe test working"
+//         route "/about" >=> text "Giraffe about page!"
+//         route "/wheretofindus" >=> text "our location page"
+//         route "/ourstory" >=> text "our story page"
+//         route "/products" >=> text "product page"
+//         route "/delivery" >=> text "delivery page"
+//         routef "/data/%s/weather" (fun v -> sprintf "json (weatherForecasts (%s))" v |> text)
+//         routef "/value/%s" text 
+//         subRoute "/auth" (
+//                 choose [
+//                     route "/dashboard" >=> text "Auth Dashboard"
+//                     route "/inbox" >=> text "Auth Inbox"
+//                     route "/helpdesk" >=> text "Auth Helpdesk"
+//                     routef "/parse%slong%istrings%sand%sIntegers" (fun (a,b,c,d) -> sprintf "%s | %i | %s | %s" a b c d |> text)
+//                     routef "token/%s" (fun v -> text ("following token recieved:" + v))                                    
+//                     subRoute "/manager" (
+//                             choose [
+//                                 route "/payroll" >=> text "Manager Payroll"
+//                                 route "/timesheets" >=> text "Manager Timesheets"
+//                                 route "/teamview" >=> text "Manager Teamview"
+//                                 routef "/team%ssales%f" (fun (t,s) -> sprintf "team %s had sales of %f" t s |> text)
+//                                 routef "/accesscode/%i" (fun i -> sprintf "manager access close is %i" i |> text)
+//                                 subRoute "/executive" (
+//                                         choose [
+//                                             route "/finance" >=> text "executive finance"
+//                                             route "/operations" >=> text "executive operations"
+//                                             route "/mis" >=> text "executive mis"
+//                                             routef "/area/%s" (sprintf "executive area %s" >> text)
+//                                             routef "/area/%s/district/%s/costcode%i" (fun (a,d,c) -> sprintf "executive area %s district %s costcode %s"  a d c |> text)
+//                                         ])
+//                             ])
+//                 ])
+//     ]
     
 // let trieApi : HttpHandler =
 //     routeTrie [

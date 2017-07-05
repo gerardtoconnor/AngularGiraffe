@@ -1,6 +1,9 @@
-module Giraffe.HttpRouter.RouterParsers
+module Giraffe.RouterParsers
 
+open System
 open System.Threading.Tasks
+
+type Parser = string -> int -> int -> struct(bool*obj)
 
 let inline between x l u = (x - l) * (u - x) >= LanguagePrimitives.GenericZero
 

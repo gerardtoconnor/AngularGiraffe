@@ -1,13 +1,15 @@
 module Giraffe.HttpRouter
 
+open System
 open NonStructuralComparison
 open System.Threading.Tasks
 open Giraffe.Task
+open Microsoft.AspNetCore.Http
 open Giraffe.HttpHandlers
 open FSharp.Core.Printf
 open Microsoft.FSharp.Reflection
 open System.Collections.Generic
-open Giraffe.HttpRouter.RouterParsers
+open Giraffe.RouterParsers
 
 // type HttpContext() = 
 //     class end
@@ -28,8 +30,6 @@ open Giraffe.HttpRouter.RouterParsers
 
 // let (>=>) = compose 
 // let handler : HttpHandler = Some >> Task.FromResult 
-
-type Parser = string -> int -> int -> struct(bool*obj)
 
 let typeMap = function
     | 'b' -> typeof<bool>   // bool
@@ -202,7 +202,7 @@ type PathNode(pe : PathExpr) =
         | Routef (ac,pcl,fn) , Some hc -> Handlef(ac,pcl,(fun (o:obj) -> fn o >=> hc ))
         | Routef (ac,pcl,fn) , None    -> Handlef(ac,pcl,fn)
         | Route path      , Some hc -> Handle(path,hc)
-        | Route path      , None    -> failwith "no handlers were provided for path:" + path 
+        | Route path      , None    -> failwith ("no handlers were provided for path:" + path)
     member pn.AddHandler (h:HttpHandler) =
         match pn.HandleChain with
         | Some ph -> pn.HandleChain <- Some(ph >=> h)
@@ -239,7 +239,10 @@ type ParseState(argCount:int) =
 
 let router (paths: PathNode list) =
     
+
+
     let nary,fary = 
+
         let ary = ResizeArray<AryNode>()
         let fns = ResizeArray<HandleFn>()
 
@@ -365,11 +368,21 @@ let router (paths: PathNode list) =
             match ls with
             | [] -> ()
             | h :: t ->
+                    printfn "processing head path %A" h
                     let cnode = h.GetBinding() |> n.AddHandlerMap
-                    addPaths h.ChildRoute cnode
+                    printfn "finished handler add for %A" h
+                    if not h.ChildRoute.IsEmpty then
+                        printfn "Child routes found so processing for %A" h
+                        addPaths h.ChildRoute cnode
+                    printfn "finished processing head so rec going in tail for %A" h
                     addPaths t n
         addPaths paths root
+        
+        go root
+
         ary.ToArray() , fns.ToArray()
+
+
         
     let inline noneTask () = Task.FromResult None
 
@@ -468,8 +481,8 @@ let router (paths: PathNode list) =
                                 (fun results -> (fn results) ctx)
                                 (fun () -> go state.PStart.[0] (n+1))
                         | xfn -> failwith(sprintf "unhandled Finish funciton match case %A" xfn)
+                    | _ -> noneTask ()
                 else noneTask ()
-
 
             // matching function begin
             match nary.[n].Instr with
@@ -532,6 +545,7 @@ let router (paths: PathNode list) =
                         parsing (p + 1) (n + 2) ps
                     | xfn -> failwith(sprintf "unhandled Continue funciton match case %A" xfn)                                    
                 )
+            | _ -> noneTask ()
                
         go 0 0    
 
@@ -551,18 +565,22 @@ let inline routef (fmt:StringFormat<'U,'T>) (fn:'T -> HttpHandler) =
         let n = path.IndexOf('%',i)     // get index of next '%'
         if n = -1 || n = last then
             // non-parse case & end
-            let tl = Token( path.Substring(i,n - i) ) :: acc
-            PathNode(Routef(argCount,tl,(fun (o:obj) -> o :?> 'T |> fn)))       
+            if n <> i && last <> i then
+                let tl = Token( path.Substring(i,last - i + 1) ) :: acc
+                PathNode(Routef(argCount,List.rev tl,(fun (o:obj) -> o :?> 'T |> fn)))
+            else
+                PathNode(Routef(argCount,List.rev acc,(fun (o:obj) -> o :?> 'T |> fn))) 
         else
             let fmtc = path.[n + 1]
             if fmtc = '%' then 
-                go (n + 2) (Token( path.Substring(i,n - i) ) :: acc) argCount
+                go (n + 2) (Token( path.Substring(i,n - i ) ) :: acc) argCount
             else 
                 match formatMap.ContainsKey fmtc with
                 | false ->
                     failwith <| sprintf "Invalid parse char in path %s, pos: %i, char: %c" path n fmtc
                 | true  ->
-                    go (n + 2) (Parse(fmtc)::acc) (argCount + 1)
+                    let tl = Parse(fmtc)::Token(path.Substring(i,n - i) )::acc
+                    go (n + 2) tl (argCount + 1)
     go 0 [] 0
 
 /// Testing

@@ -17,7 +17,7 @@ open WebApi
 let private moduleExport = JavaScriptModuleExport("./ClientApp/dist/main-server")
 let private writeLayoutRender (res:HttpResponse) (file:string) (tag:string) (data:string) (trender:Task<RenderToStringResult>) =
     let enum = System.IO.File.ReadLines(file).GetEnumerator()
-    let write str = res.WriteAsync(str) |> task.AwaitTask
+    let write str = res.WriteAsync(str) //|> task.AwaitTask
 
     let rec go searching = task {
         if enum.MoveNext() then
