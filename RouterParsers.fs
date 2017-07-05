@@ -4,7 +4,6 @@ open System.Threading.Tasks
 
 let inline between x l u = (x - l) * (u - x) >= LanguagePrimitives.GenericZero
 
-let rtrn (v:'T when 'T: struct) = struct (true ,v)
 let rtrn (o:obj) = struct (true ,o)
 let failure      = struct (false,Unchecked.defaultof<obj>)
 

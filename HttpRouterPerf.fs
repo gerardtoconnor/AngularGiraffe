@@ -9,25 +9,25 @@ open Microsoft.FSharp.Reflection
 open System.Collections.Generic
 open Giraffe.HttpRouter.RouterParsers
 
-type HttpContext() = 
-    class end
+// type HttpContext() = 
+//     class end
 
-//type Continuation = HttpContext -> Task<HttpContext>
+// //type Continuation = HttpContext -> Task<HttpContext>
 
-//result of any handler
-type HttpHandler = HttpContext -> Task<HttpContext option>
+// //result of any handler
+// type HttpHandler = HttpContext -> Task<HttpContext option>
 
-let compose (a:HttpHandler) (b:HttpHandler) : HttpHandler =
-    fun ctx ->
-        task {
-            let! ctxo = a ctx
-            match ctxo with
-            | Some ctx -> return! b ctx
-            | None -> return None
-        }
+// let compose (a:HttpHandler) (b:HttpHandler) : HttpHandler =
+//     fun ctx ->
+//         task {
+//             let! ctxo = a ctx
+//             match ctxo with
+//             | Some ctx -> return! b ctx
+//             | None -> return None
+//         }
 
-let (>=>) = compose 
-let handler : HttpHandler = Some >> Task.FromResult 
+// let (>=>) = compose 
+// let handler : HttpHandler = Some >> Task.FromResult 
 
 type Parser = string -> int -> int -> struct(bool*obj)
 
@@ -49,11 +49,11 @@ type Instr =
 | FnContinue = 3uy  // a partial match/subroute that allows matching to cont (move next) while fns pulled
 | FnEnd = 4uy
 | FnEndOrNext = 5uy       // end function at last character (Handler/MatchComplete)
-| FnEndOrCont = 5uy
-| FnFinish = 6uy    // parse mid to end path function represents (MatchToEnd)
-| FnFinishOrNext = 7uy    // parse midToEnd and match, try match next before parse finish /%
-| FnFinishOrRetry = 8uy  // where at last, FnFinish, otherwise Retry eg '/' , '/about/ -> '/' has both functionality
-| FnContOrFinish = 9uy   // where at last, FnFinish, otherwise FnCont eg '/a%s' , '/a%s/b -> 'a' has both functions, need to test partial first
+| FnEndOrCont = 6uy
+| FnFinish = 7uy    // parse mid to end path function represents (MatchToEnd)
+| FnFinishOrNext = 8uy    // parse midToEnd and match, try match next before parse finish /%
+| FnFinishOrRetry = 9uy  // where at last, FnFinish, otherwise Retry eg '/' , '/about/ -> '/' has both functionality
+| FnContOrFinish = 10uy   // where at last, FnFinish, otherwise FnCont eg '/a%s' , '/a%s/b -> 'a' has both functions, need to test partial first
 | NOP = 100uy 
 
 //FnContOrFinish requires hack due to two functions (i=Cont / i+1=Fin ?)
@@ -374,7 +374,7 @@ let router (paths: PathNode list) =
     let inline noneTask () = Task.FromResult None
 
     //use compiled instruciton & function arrays to process path queries
-    fun ctx ->
+    fun (ctx:HttpContext) ->
         let path : string = ctx.Request.Path.Value
         
         let endProcess p n failFn =
@@ -383,88 +383,106 @@ let router (paths: PathNode list) =
                 | HandleFn f -> f ctx
                 | ParseApplyEndSingle (prs,fn) ->
                     match prs path p (path.Length - 1) with
-                    | struct(true,v) -> (v |> fn) ctx
+                    | struct(true,v) -> (fn v) ctx
                     | struct(false,_)-> failFn ()
                 | xfn -> failwith(sprintf "unhandled funciton match case %A" xfn)
             else failFn ()
-
-        let rec parsing p n (state:ParseState) : Task<HttpContext option> =
             
-            let tryParse (cont:'T -> Task<HttpContext option>) (fail:unit->Task<HttpContext option>) (pr:struct(bool*'T))   =
-                match pr with
-                | struct(true,v) -> cont v
-                | struct(false,_) -> fail ()
-            
-            let applyParse j (cont:obj [] -> Task<HttpContext option>) (fail:unit->Task<HttpContext option>) =
-                let results = Array.zeroCreate<obj>(state.TotalArgs)
-                let rec pgo i =                
-                    if i >= 0 then
-                        let pfn = state.Parsers.[i]
-                        pfn path state.PStart.[i] state.PEnd.[i]
-                        |> tryParse (fun v ->
-                            results.[i] <- v
-                            pgo (i - 1)
-                        ) fail
-                    else
-                        cont results
-                pgo j
-            
-            if p < path.Length then 
-
-                match nary.[n].Instr with
-                | Next ->
-                    if   nary.[n].Char = (byte path.[p]) 
-                    then parsing (p+1) (n+1) state
-                    else parsing (state.PStart.[state.CurArg]) (state.Retry) state
-                | FnFinish ->
-                    match fary.[int nary.[n].Hop] with
-                    | ParseApplyEndTuple (prs,fn) ->
-                        applyParse (state.TotalArgs - 2) (fun results ->
-                            prs path p (path.Length - 1) 
-                            |> tryParse (fun v ->
-                                results.[state.TotalArgs - 1] <- v
-                                (fn results) ctx        
-                                ) noneTask
-                            ) noneTask
-                    | ParseCompleteSingle (fn) ->
-                        state.Parsers.[0] path state.PStart.[0] state.PEnd.[0]
-                        |> tryParse (fun v -> (fn v) ctx) noneTask
-                    | ParseCompleteTuple (fn) ->
-                        applyParse (state.TotalArgs - 1) (fun results -> (fn results) ctx) noneTask
-                    | xfn -> failwith(sprintf "unhandled Finish funciton match case %A" xfn)
-                | FnFinishOrNext ->
-                    match fary.[int nary.[n].Hop] with
-                    | ParseApplyEndTuple (prs,fn) ->
-                        applyParse (state.TotalArgs - 2) (fun results ->
-                            prs path p (path.Length - 1) 
-                            |> tryParse (fun v ->
-                                results.[state.TotalArgs - 1] <- v
-                                (fn results) ctx        
-                                ) (fun () -> 
-                                    parsing (state.PStart.[0]) (n + 1) )
-                            )
-                    | ParseCompleteSingle (fn) ->
-                        state.Parsers.[0] path state.PStart.[0] state.PEnd.[0]
-                        |> tryParse (fun v -> (fn v) ctx ) noneTask
-                    | ParseCompleteTuple (fn) ->
-                        applyParse (state.TotalArgs - 1) (fun results -> (fn results) ctx) 
-                    | xfn -> failwith(sprintf "unhandled Finish funciton match case %A" xfn)
-            else noneTask ()
-            
-        //pathIndex -> nodeIndex 
         let rec go p n =
             
+            let rec parsing p n (state:ParseState) : Task<HttpContext option> =
+
+                // Parse Helper funcitons
+                let tryParse (cont:'T -> Task<HttpContext option>) (fail:unit->Task<HttpContext option>) (pr:struct(bool*'T))   =
+                    match pr with
+                    | struct(true,v) -> cont v
+                    | struct(false,_) -> fail ()
+                
+                let applyParse j (cont:obj [] -> Task<HttpContext option>) (fail:unit->Task<HttpContext option>) =
+                    let results = Array.zeroCreate<obj>(state.TotalArgs)
+                    let rec pgo i =                
+                        if i >= 0 then
+                            let pfn = state.Parsers.[i]
+                            pfn path state.PStart.[i] state.PEnd.[i]
+                            |> tryParse (fun v ->
+                                results.[i] <- v
+                                pgo (i - 1)
+                            ) fail
+                        else
+                            cont results
+                    pgo j
+                
+                // Parse function begin
+                if p < path.Length then 
+
+                    match nary.[n].Instr with
+                    | Instr.Next ->
+                        if   nary.[n].Char = (byte path.[p]) 
+                        then 
+                            if state.PEnd.[state.CurArg] = 0 then // HACK: need to impliment better logic here to get parse end
+                                state.PEnd.[state.CurArg] <- p - 1
+                            parsing (p+1) (n+1) state
+                        else parsing (state.PStart.[state.CurArg]) (state.Retry) state
+                     | Instr.FnContinue ->
+                        match fary.[int nary.[n].Hop] with
+                        | ParseMid (i,prs) ->
+                            state.Parsers.[i] <- prs
+                            state.PStart.[i] <- p
+                            state.CurArg <- i
+                            parsing p (n + 1) state                        
+                        | xfn -> failwith(sprintf "unhandled Continue funciton match case %A" xfn)
+                    | Instr.FnFinish ->
+                        match fary.[int nary.[n].Hop] with
+                        | ParseApplyEndTuple (prs,fn) ->
+                            applyParse (state.TotalArgs - 2) (fun results ->
+                                prs path p (path.Length - 1) 
+                                |> tryParse (fun v ->
+                                    results.[state.TotalArgs - 1] <- v
+                                    (fn results) ctx        
+                                    ) noneTask
+                                ) noneTask
+                        | ParseCompleteSingle (fn) ->
+                            state.Parsers.[0] path state.PStart.[0] state.PEnd.[0]
+                            |> tryParse (fun v -> (fn v) ctx) noneTask
+                        | ParseCompleteTuple (fn) ->
+                            applyParse (state.TotalArgs - 1) (fun results -> (fn results) ctx) noneTask
+                        | xfn -> failwith(sprintf "unhandled Finish funciton match case %A" xfn)
+                    | Instr.FnFinishOrNext ->
+                        match fary.[int nary.[n].Hop] with
+                        | ParseApplyEndTuple (prs,fn) ->
+                            applyParse (state.TotalArgs - 2) 
+                                (fun results ->
+                                    prs path p (path.Length - 1) 
+                                    |> tryParse (fun v ->
+                                                results.[state.TotalArgs - 1] <- v
+                                                (fn results) ctx) 
+                                            (fun () -> go state.PStart.[0] (n+1))
+                                        )
+                                (fun () -> go state.PStart.[0] (n+1))
+                        | ParseCompleteSingle (fn) ->
+                            state.Parsers.[0] path state.PStart.[0] state.PEnd.[0]
+                            |> tryParse (fun v -> (fn v) ctx ) 
+                                        (fun () -> go state.PStart.[0] (n+1))
+                        | ParseCompleteTuple (fn) ->
+                            applyParse (state.TotalArgs - 1) 
+                                (fun results -> (fn results) ctx)
+                                (fun () -> go state.PStart.[0] (n+1))
+                        | xfn -> failwith(sprintf "unhandled Finish funciton match case %A" xfn)
+                else noneTask ()
+
+
+            // matching function begin
             match nary.[n].Instr with
-            | Next ->
+            | Instr.Next ->
                 if   nary.[n].Char = (byte path.[p]) 
                 then go (p+1) (n+1)
-                else NoneTask ()
-            | Retry ->
+                else noneTask ()
+            | Instr.Retry ->
                 if   nary.[n].Char = (byte path.[p]) 
                 then go (p+1) (int nary.[n].Hop)
                 else go (p) (n + 1)
-            | FnEnd ->
-                endProcess p n NoneTask
+            | Instr.FnEnd ->
+                endProcess p n noneTask
                 // if p = path.Length - 1 then
                 //     match fary.[int nary.[n].Hop] with
                 //     | HandleFn f -> f ctx
@@ -474,17 +492,17 @@ let router (paths: PathNode list) =
                 //         | struct(false,_)-> NoneTask ()
                 //     | xfn -> failwith(sprintf "unhandled funciton match case %A" xfn)
                 // else NoneTask ()
-            | FnFinish ->
+            | Instr.FnFinish ->
                 // verify differnce between finish and End as duplicated
                 match fary.[int nary.[n].Hop] with
                 | HandleFn f -> f ctx
                 | ParseApplyEndSingle (prs,fn) ->
                     match prs path p (path.Length - 1) with
                     | struct(true,v) -> (v |> fn) ctx
-                    | struct(false,_)-> NoneTask ()
+                    | struct(false,_)-> noneTask ()
                 | xfn -> failwith(sprintf "unhandled Finish funciton match case %A" xfn)
-            | FnEndOrNext ->
-                endProcess p n (fun () -> go p (n+1)) // <<<<< p / p + 1 ??
+            | Instr.FnEndOrNext ->
+                endProcess p n (fun () -> go (p+1) (n+1)) // <<<<< p / p + 1 ??
                 // match fary.[int nary.[n].Hop] with
                 // | HandleFn f -> f ctx
                 // | ParseApplyEndSingle (prs,fn) ->
@@ -492,7 +510,7 @@ let router (paths: PathNode list) =
                 //     | struct(true,v) -> (v |> fn) ctx
                 //     | struct(false,_)-> Task.FromResult None
                 // | xfn -> failwith(sprintf "unhandled funciton match case %A" xfn)
-            | FnContinue ->
+            | Instr.FnContinue ->
                 match fary.[int nary.[n].Hop] with
                 | ParseStart (i,prs) ->
                     let ps = ParseState(i)
@@ -500,7 +518,7 @@ let router (paths: PathNode list) =
                     ps.PStart.[0] <- p
                     parsing p n ps
                 | xfn -> failwith(sprintf "unhandled Continue funciton match case %A" xfn)
-            | FnEndOrCont ->
+            | Instr.FnEndOrCont ->
                 endProcess p n (fun () ->
                     // n = end node
                     // n + 1 = parse node with '_'
@@ -540,113 +558,113 @@ let inline routef (fmt:StringFormat<'U,'T>) (fn:'T -> HttpHandler) =
             if fmtc = '%' then 
                 go (n + 2) (Token( path.Substring(i,n - i) ) :: acc) argCount
             else 
-                match formatMap.TryGet fmtc with
-                | false, prs ->
+                match formatMap.ContainsKey fmtc with
+                | false ->
                     failwith <| sprintf "Invalid parse char in path %s, pos: %i, char: %c" path n fmtc
-                | true , prs ->
-                    go (n + 2) (Parse(prs)::acc) (argCount + 1)
+                | true  ->
+                    go (n + 2) (Parse(fmtc)::acc) (argCount + 1)
     go 0 [] 0
 
 /// Testing
 ////////////////////////////////
-let text (v:string) = fun (ctx:HttpContext) -> ctx |> Some |> Task.FromResult 
-let pn = route "/about"
-let pn2 = pn >=> text "about"
+// let text (v:string) = fun (ctx:HttpContext) -> ctx |> Some |> Task.FromResult 
+// let pn = route "/about"
+// let pn2 = pn >=> text "about"
 
-let webapp = router [
-                route "/about" >=> text "about" >=> text "again"
-                route "/auth"  >=> [
-                    route "/cats" >=> text "cats"
-                    routef "/dog%is-sds" (fun v -> text v)                    
-                        ]
-                    // choose [
-                    //     AuthHandler >=| [
-                    //         path "/authorised user" >=> text "/authorised user"
-                    //         path "/authorised manger" >=> text "/authorised manger"
-                    //     ]
-                    //     UnAuthHandler >=> text "You are not authorised"
-                    // ]
-                route "/other" >=> text "other"
-    ]
+// let webapp = router [
+//                 route "/about" >=> text "about" >=> text "again"
+//                 route "/auth"  >=> [
+//                     route "/cats" >=> text "cats"
+//                     routef "/dog%is-sds" (fun v -> text v)                    
+//                         ]
+//                     // choose [
+//                     //     AuthHandler >=| [
+//                     //         path "/authorised user" >=> text "/authorised user"
+//                     //         path "/authorised manger" >=> text "/authorised manger"
+//                     //     ]
+//                     //     UnAuthHandler >=> text "You are not authorised"
+//                     // ]
+//                 route "/other" >=> text "other"
+//     ]
 
-(*
-    Route build process
-    1  take path lists and compress list to remove overlaps (into trie structure?)
-    2  once paths are into trie, (with child path lists not not proccessed, stored at end nodes) can begin crawl
-    3  in each node, lay down path
-    4  if Fns & child nodes, combo flag, fns added to fnAry, index back added to Hop
-    5  if childnodes, lay down retry ary
-*)
-
-
+// (*
+//     Route build process
+//     1  take path lists and compress list to remove overlaps (into trie structure?)
+//     2  once paths are into trie, (with child path lists not not proccessed, stored at end nodes) can begin crawl
+//     3  in each node, lay down path
+//     4  if Fns & child nodes, combo flag, fns added to fnAry, index back added to Hop
+//     5  if childnodes, lay down retry ary
+// *)
 
 
 
 
 
-//((cts |> fn arg1) |> fn arg2)  
-//hndl
 
-// [<Struct>]
-// type State = {
-//     mutable succ : Continuation
-//     mutable fail : Continuation
-//     ctx : HttpContext
-//     }
 
-// type State2 = 
-//     struct
-//         val mutable succ : Continuation []
-//         val mutable succPos : int
-//         val mutable fail : Continuation []
-//         val mutable failPos : int
-//         val ctx : HttpContext
-//         member x.Succ
-//             with get() = 
-//                 match x.succPos with 
-//                 | -1 -> x.succ.[0] x.ctx 
-//                 | _ ->
-//                     x.succPos <- x.succPos - 1
-//                     x.succ.[x.succPos] x.ctx
+// //((cts |> fn arg1) |> fn arg2)  
+// //hndl
 
-//         member x.Fail
-//             with get() = 
-//                 match x.failPos with 
-//                 | -1 -> x.fail.[0] x.ctx 
-//                 | _ ->
-//                     x.succPos <- x.succPos - 1
-//                     x.succ.[x.succPos] x.ctx
+// // [<Struct>]
+// // type State = {
+// //     mutable succ : Continuation
+// //     mutable fail : Continuation
+// //     ctx : HttpContext
+// //     }
+
+// // type State2 = 
+// //     struct
+// //         val mutable succ : Continuation []
+// //         val mutable succPos : int
+// //         val mutable fail : Continuation []
+// //         val mutable failPos : int
+// //         val ctx : HttpContext
+// //         member x.Succ
+// //             with get() = 
+// //                 match x.succPos with 
+// //                 | -1 -> x.succ.[0] x.ctx 
+// //                 | _ ->
+// //                     x.succPos <- x.succPos - 1
+// //                     x.succ.[x.succPos] x.ctx
+
+// //         member x.Fail
+// //             with get() = 
+// //                 match x.failPos with 
+// //                 | -1 -> x.fail.[0] x.ctx 
+// //                 | _ ->
+// //                     x.succPos <- x.succPos - 1
+// //                     x.succ.[x.succPos] x.ctx
                 
-//         new(ictx) = { ctx = ictx ; succ = Unchecked.defaultof<Continuation> ; fail = Unchecked.defaultof<Continuation> }
-//     end
+// //         new(ictx) = { ctx = ictx ; succ = Unchecked.defaultof<Continuation> ; fail = Unchecked.defaultof<Continuation> }
+// //     end
 
-// let state = {
-//     succ=Unchecked.defaultof<Continuation>;
-//     fail=Unchecked.defaultof<Continuation>;
-//     ctx=Unchecked.defaultof<HttpContext>
-//     }
+// // let state = {
+// //     succ=Unchecked.defaultof<Continuation>;
+// //     fail=Unchecked.defaultof<Continuation>;
+// //     ctx=Unchecked.defaultof<HttpContext>
+// //     }
 
-// let State2 = State2(Unchecked.defaultof<HttpContext>)
+// // let State2 = State2(Unchecked.defaultof<HttpContext>)
 
-// let (>=>) (a:Continuation) (b:Continuation) = 
-//     fun (s:State2) -> 
-//         let s2 = State2(ctx)
-//         s2.succ <- s.succ
-//         s.succ <- b
+// // let (>=>) (a:Continuation) (b:Continuation) = 
+// //     fun (s:State2) -> 
+// //         let s2 = State2(ctx)
+// //         s2.succ <- s.succ
+// //         s.succ <- b
 
 
-type IFlag =
-| Next =        0b00000001        // if match, move to next
-| Hop =         0b00000010         // if match, hop to node at HOP val ?? needed?
-| Retry =       0b00000100       // when matching multiple routes, if matched, jump to HOP, else cont to next node
-| FnContinue =  0b00001000  // a partial match/subroute that allows matching to cont (move next) while fns pulled
-| FnFinish =    0b00010000    // ending function that requires no further matching, get fn and go
-| NOP =         0b00000000
+// type IFlag =
+// | Next =        0b00000001        // if match, move to next
+// | Hop =         0b00000010         // if match, hop to node at HOP val ?? needed?
+// | Retry =       0b00000100       // when matching multiple routes, if matched, jump to HOP, else cont to next node
+// | FnContinue =  0b00001000  // a partial match/subroute that allows matching to cont (move next) while fns pulled
+// | FnFinish =    0b00010000    // ending function that requires no further matching, get fn and go
+// | NOP =         0b00000000
 
-let flag = IFlag.FnFinish ||| IFlag.Retry
-if flag = (IFlag.FnContinue ||| IFlag.Retry) then printf "&&& works!"
-flag = (IFlag.FnContinue ||| IFlag.Retry)
-flag = (IFlag.FnContinue ||| IFlag.Retry)
-let err = IFlag.Next ||| IFlag.Retry
-let bitval (v:IFlag) (p) = v &&& (IFlag.Next <<< p) 
-bitval flag 2
+// let flag = IFlag.FnFinish ||| IFlag.Retry
+// if flag = (IFlag.FnContinue ||| IFlag.Retry) then printf "&&& works!"
+// flag = (IFlag.FnContinue ||| IFlag.Retry)
+// flag = (IFlag.FnContinue ||| IFlag.Retry)
+// let err = IFlag.Next ||| IFlag.Retry
+// let bitval (v:IFlag) (p) = v &&& (IFlag.Next <<< p) 
+// bitval flag 2
