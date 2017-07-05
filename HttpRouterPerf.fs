@@ -238,8 +238,6 @@ type ParseState(argCount:int) =
     member val TotalArgs = argCount with get
 
 let router (paths: PathNode list) =
-    
-
 
     let nary,fary = 
 
@@ -579,8 +577,11 @@ let inline routef (fmt:StringFormat<'U,'T>) (fn:'T -> HttpHandler) =
                 | false ->
                     failwith <| sprintf "Invalid parse char in path %s, pos: %i, char: %c" path n fmtc
                 | true  ->
-                    let tl = Parse(fmtc)::Token(path.Substring(i,n - i) )::acc
-                    go (n + 2) tl (argCount + 1)
+                    let tl = Parse(fmtc) :: (if n + 1 = last then acc else Token(path.Substring(i,n - i) )::acc)
+                    if n + 2 > last then
+                        PathNode(Routef(argCount,List.rev tl,(fun (o:obj) -> o :?> 'T |> fn)))
+                    else
+                        go (n + 2) tl (argCount + 1)
     go 0 [] 0
 
 /// Testing
