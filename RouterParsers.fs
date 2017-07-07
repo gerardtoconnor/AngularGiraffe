@@ -2,8 +2,9 @@ module Giraffe.RouterParsers
 
 open System
 open System.Threading.Tasks
+open OptimizedClosures 
 
-type Parser = string -> int -> int -> struct(bool*obj)
+type Parser = FSharpFunc<string,int,int,struct(bool*obj)>
 
 let inline between x l u = (x - l) * (u - x) >= LanguagePrimitives.GenericZero
 
@@ -134,12 +135,12 @@ let formatMap =
     dict [
     // Char    Range Parser
     // ---------------  -------------------------------------------
-        'b', (boolParse  )  // bool
-        'c', (charParse  )  // char
-        's', (stringParse)  // string
-        'i', (intParse   )  // int
-        'd', (int64Parse )  // int64
-        'f', (floatParse )  // float
+        'b', (FSharpFunc<_,_,_,_>.Adapt boolParse  )  // bool
+        'c', (FSharpFunc<_,_,_,_>.Adapt charParse  )  // char
+        's', (FSharpFunc<_,_,_,_>.Adapt stringParse)  // string
+        'i', (FSharpFunc<_,_,_,_>.Adapt intParse   )  // int
+        'd', (FSharpFunc<_,_,_,_>.Adapt int64Parse )  // int64
+        'f', (FSharpFunc<_,_,_,_>.Adapt floatParse )  // float
     ]
 
 // match floatParse2 "123.0123456789" 0 11 with
