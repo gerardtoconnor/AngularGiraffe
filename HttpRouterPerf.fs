@@ -359,7 +359,7 @@ let router (paths: PathNode list) =
                     | h :: t ->
                         match h with
                         | CHandleFn h -> 
-                            AryNode(n.Char,fns.Count,if hasEdges then Instr.FnEndOrNext else Instr.FnEnd ) |> ary.Add
+                            AryNode(c,fns.Count,if hasEdges then Instr.FnEndOrNext else Instr.FnEnd ) |> ary.Add
                             fns.Add (HandleFn h)
                             mapFuncs false cx t
                         | CParseStart (i,p,pn) -> // argCount * parser
@@ -398,10 +398,13 @@ let router (paths: PathNode list) =
                                     | []  -> 
                                         match kvp.Value.Edges.Count with
                                         | 0 -> ()
-                                        | _ -> AryNode(kvp.Key,ary.Count,Instr.Next) |> ary.Add
+                                        | _ ->
+                                            match kvp.Value.FnList with
+                                            | [] -> AryNode(kvp.Key,ary.Count,Instr.Next) |> ary.Add 
+                                            | fns -> mapFuncs true kvp.Key fns 
                                         go kvp.Value // !! Run path for last node now (so on next ittr arycount updated )
                                         nodes,ec //should always be final fold
-                                    | fns ->
+                                    | fns -> 
                                         //AryNode(kvp.Key,0,Instr.RetryReturn) |> ary.Add //<<<< needs to be a retryReturn logic!?
                                         mapFuncs true n.Char fns
                                         (ec,kvp.Value) :: nodes ,(ec + 1)
@@ -413,6 +416,9 @@ let router (paths: PathNode list) =
                                         AryNode(kvp.Key,0,Instr.Retry) |> ary.Add
                                         // paths computed back to front (to allow last cont) so put in list
                                         (ec,kvp.Value) :: nodes ,(ec + 1)
+                                    | [CHandleFn h] ->
+                                        AryNode(kvp.Key,0,Instr.Retry) |> ary.Add
+                                        (ec,kvp.Value) :: nodes ,(ec + 1)               
                                     | _  ->
                                         AryNode(kvp.Key,0,Instr.RetryReturn) |> ary.Add
                                         (ec,kvp.Value) :: nodes ,(ec + 1)                               
