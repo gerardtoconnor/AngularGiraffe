@@ -448,6 +448,103 @@ let router (paths: PathNode list) =
             // | None ->
             //     addEdges n.Edges n.FnList
 
+            let rec addNodeInstr (n:CNode,retry:bool) =
+
+                match n.Edges.Count, n.FnList  with
+                | 0 , []  -> failwith "node with no edges or functions!?" 
+                | 0 , fns -> mapFuncs false n.Char n.FnList
+                | 1 , []  ->
+                    if retry then
+                        AryNode(n.Key,0,Instr.Retry) |> ary.Add //how is placeholder returned?                   
+                        go (Seq.take 1 n.Edges,false)
+                    else
+                        AryNode(n.Key,ary.Count,Instr.Next) |> ary.Add
+                        go (Seq.take 1 n.Edges,false)
+                | eg , fns ->
+                    let edgeLast = eg - 1
+                    let ipos = ary.Count // take snapshot of initial position to update placeholders later (next node)
+                    let nodes , _ = 
+                        n.Edges 
+                        |> Seq.fold
+                            (fun (nodes,ec) kvp ->
+                                if ec >= edgeLast then 
+                                    match fns with
+                                    | []   ->
+                                        //AryNode(n.Key,ary.Count,Instr.Next) |> ary.Add
+                                        addNodeInstr(kvp.Value,true) 
+                                    | fns' ->
+                                    nodes , ec
+                                else
+                                    (ec,kvp.Value,false) :: nodes , (ec + 1)
+                            ) ([],0)
+                    
+                    nodes 
+                    |> List.iter (fun (i,node,retry) ->  
+                                    let onode = ary.[ipos + i] // get place holder
+                                    ary.[ipos + i] <- AryNode(onode.Char,uint16 ary.Count,instr) // update placeholder with valid hop 
+                                    addNodeInstr(node,retry) // run this node to populate array
+                                    )
+
+                | eg , fns ->
+
+                if n.Edges.Count = 0 then
+                    mapFuncs false n.Char n.FnList
+                else
+                    //debug
+                    let edgeLast = n.Edges.Count - 1
+                    let ipos = ary.Count // take snapshot of initial position to update placeholders later (next node)
+                    let nodes , _ = 
+                        n.Edges 
+                        |> Seq.fold
+                            (fun (nodes,ec) kvp ->
+                                if ec >= edgeLast then 
+//                                    if fnl.IsEmpty then
+
+                                    match n.FnList with // needs refactoring
+                                    | []  -> 
+                                        match kvp.Value.Edges.Count with
+                                        | 0 -> ()
+                                        | _ ->
+                                            match kvp.Value.FnList with
+                                            | [] -> AryNode(kvp.Key,ary.Count,Instr.Next) |> ary.Add 
+                                            | fns -> mapFuncs true kvp.Key fns 
+                                        go kvp.Value // !! Run path for last node now (so on next ittr arycount updated )
+                                        nodes,ec //should always be final fold
+                                    | fns -> 
+                                        //AryNode(kvp.Key,0,Instr.RetryReturn) |> ary.Add //<<<< needs to be a retryReturn logic!?
+                                        mapFuncs true n.Char fns
+                                        (ec,kvp.Value) :: nodes ,(ec + 1)
+                                else
+                                    // create placeholder retry array from edge chars, last is next into its path,
+                                    // these will be updated after child runs with relevant hop index numbers 
+                                    match n.FnList with // needs refactoring
+                                    | [] -> 
+                                        AryNode(kvp.Key,0,Instr.Retry) |> ary.Add
+                                        // paths computed back to front (to allow last cont) so put in list
+                                        (ec,kvp.Value) :: nodes ,(ec + 1)
+                                    | [CHandleFn h] ->
+                                        AryNode(kvp.Key,0,Instr.Retry) |> ary.Add
+                                        (ec,kvp.Value) :: nodes ,(ec + 1)               
+                                    | _  ->
+                                        AryNode(kvp.Key,0,Instr.RetryReturn) |> ary.Add
+                                        (ec,kvp.Value) :: nodes ,(ec + 1)                               
+                            ) ([],0)
+                    
+                    // now using nodelist, with placeholders in, compute child branches & update placeholders
+                    // with postiions each time
+                    nodes 
+                    |> List.iter (fun (i,node) ->  
+                                    let onode = ary.[ipos + i] // get place holder
+                                    ary.[ipos + i] <- AryNode(onode.Char,uint16 ary.Count,onode.Instr) // update placeholder with valid hop 
+                                    go node // run this node to populate array
+                                    )
+
+
+
+
+        /// ^^^ Testing
+        ///////////////////
+
         let root = CNode(cx)
         let rec addPaths (ls:PathNode list) (n:CNode) = 
             match ls with
