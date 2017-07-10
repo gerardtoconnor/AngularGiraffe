@@ -12,12 +12,12 @@ open Microsoft.FSharp.Reflection
 open System.Collections.Generic
 open Giraffe.RouterParsers
 
-let [<Literal>] Parsy    = '^' // this character is invalid url char so can be used internally as placeholder instruction
-let [<Literal>] BParsy = 94uy    
-let [<Literal>] Endy    = '|'
-let [<Literal>] BEndy    = 124uy
-let [<Literal>] Forky = '¬'
-let [<Literal>] BForky = 172uy
+let [<Literal>] Parsy  = '^' // this character is invalid url char so can be used internally as placeholder instruction
+let [<Literal>] BParsy = 94uy  // '^'
+let [<Literal>] Endy   = '|'
+let [<Literal>] BEndy  = 124uy // '|'
+let [<Literal>] Forky  = '¬'
+let [<Literal>] BForky = 172uy // '¬'
 
 let typeMap = function
     | 'b' -> typeof<bool>   // bool
@@ -29,8 +29,6 @@ let typeMap = function
 
 // performance Node Trie
 ////////////////////////
-
-
 (*
     Route permutaions
     /               //../ node is (End|Next)
@@ -283,6 +281,7 @@ let router (paths: PathNode list) =
 
                                 match kvp.Value.EndFn with
                                 | Some fn ->
+                                    printfn "recieved end function >> %i on %c node" fns.Count kvp.Key
                                     if kvp.Value.Edges.Count = 0 && kvp.Value.FnList.IsEmpty then
                                         AryNode(Endy,fns.Count) |> ary.Add
                                     else
@@ -292,10 +291,12 @@ let router (paths: PathNode list) =
                                 
                                 match kvp.Value.FnList with
                                 | []  -> 
+                                    printfn "recieved continuation last edge %c " kvp.Key
                                     AryNode(kvp.Key,ary.Count + 1) |> ary.Add // points to next fwd index 
                                     go kvp.Value // !! Run path for last node now (so on next ittr arycount updated )
                                     nodes,ec //should always be final fold
                                 | fns ->
+                                    printfn "recieved retry to functions last edge %c " kvp.Key
                                     AryNode(kvp.Key,0) |> ary.Add
                                     fnmap fns
                                     (ec,kvp.Value) :: nodes ,(ec + 1)
@@ -303,6 +304,7 @@ let router (paths: PathNode list) =
                             else
                                 // create placeholder retry array from edge chars, last is next into its path,
                                 // these will be updated after child runs with relevant hop index numbers 
+                                printfn "recieved retry to next edge %c " kvp.Key
                                 AryNode(kvp.Key,0) |> ary.Add //Retry
                                 // paths computed back to front (to allow last cont) so put in list
                                 (ec,kvp.Value) :: nodes ,(ec + 1)
@@ -340,7 +342,7 @@ let router (paths: PathNode list) =
         
     let inline noneTask () = Task.FromResult None
 
-                    // Parse Helper funcitons
+    // Parse Helper funcitons
     let _tryParse (cont:'T -> Task<HttpContext option>) (fail:unit->Task<HttpContext option>) (pr:struct(bool*'T))   =
         match pr with
         | struct(true,v) -> cont v
@@ -364,14 +366,9 @@ let router (paths: PathNode list) =
     
     let applyParse = FSharpFunc<_,_,_,_,_,_>.Adapt _applyParse
 
-    
-    
-    //use compiled instruciton & function arrays to process path queries
-    fun (ctx:HttpContext) ->
-        // use adapted functions (FSharpFunc<_,_,_>.Adapt(f)) for runtime (esp rec) funcs with no partial application & multiple args         
-        let path : string = ctx.Request.Path.Value
-        
-        let _endProcess p n failFn =
+    /// completion function helpers 
+
+    let goEnding (path:string,ctx,p,n,failFn) =
             if p = path.Length - 1 then
                 match fary.[int nary.[n].Hop] with
                 | HandleFn f -> f ctx
@@ -381,83 +378,52 @@ let router (paths: PathNode list) =
                     | struct(false,_)-> failFn ()
                 | xfn -> failwith(sprintf "unhandled funciton match case %A" xfn)
             else failFn ()
+        
+    let parseEnding (path,ctx,p,state,pfn:HandleFn,failFn:unit -> Task<HttpContext option>) =
+        match pfn with
+        | ParseApplyEndTuple (prs,fn) ->
+            applyParse.Invoke( path, state, -2,
+                (fun results ->
+                    tryParse.Invoke((fun v ->
+                        results.[state.TotalArgs - 1] <- v
+                        (fn results) ctx        
+                        ), 
+                        failFn,
+                        prs.Invoke(path,p,path.Length - 1))
+                ),
+                failFn)
+        | ParseCompleteSingle (fn) ->
+            tryParse.Invoke(
+                (fun v -> (fn v) ctx),
+                failFn,
+                state.Parsers.[0].Invoke(path, state.PStart.[0], state.PEnd.[0]))
 
-        let endProcess = FSharpFunc<_, _, _, _>.Adapt _endProcess
-            
-        let rec go(p,n) =
-            
-            let rec parsing (p,n,retry,fp,state:ParseState) : Task<HttpContext option> =                
-                
-                let completionFn (pfn:HandleFn) (failFn:unit -> Task<HttpContext option>) =
-                    match pfn with
-                    | ParseApplyEndTuple (prs,fn) ->
-                        applyParse.Invoke( path, state, -2,
-                            (fun results ->
-                                tryParse.Invoke((fun v ->
-                                    results.[state.TotalArgs - 1] <- v
-                                    (fn results) ctx        
-                                    ), 
-                                    failFn,
-                                    prs.Invoke(path,p,path.Length - 1))
-                            ),
-                            failFn)
-                    | ParseCompleteSingle (fn) ->
-                        tryParse.Invoke(
-                            (fun v -> (fn v) ctx),
-                            failFn,
-                            state.Parsers.[0].Invoke(path, state.PStart.[0], state.PEnd.[0]))
+        | ParseCompleteTuple (fn) ->
+            applyParse.Invoke(path, state, -1,
+                (fun results -> (fn results) ctx),
+                failFn)
+        | xfn -> failFn () 
 
-                    | ParseCompleteTuple (fn) ->
-                        applyParse.Invoke(path, state, -1,
-                            (fun results -> (fn results) ctx),
-                            failFn)
-                    | xfn -> failFn () 
-                        //failwith(sprintf "unhandled Finish funciton match case %A" xfn)
-            
-                // Parse function begin
-                if p < path.Length then 
-                    match nary.[n].Char with
-                    | BParsy ->
-                        match fary.[int nary.[n].Hop] with
-                        | ParseMid (i,prs,fp) ->
-                            state.Parsers.[i] <- prs
-                            state.PStart.[i] <- p
-                            state.CurArg <- i
-                            parsing(p,n + 1,retry,fp,state)                        
-                        | xfn -> failwith(sprintf "unhandled parse Continue function match case %A" xfn) 
-                    | BEndy  ->
-                        completionFn fary.[int nary.[n].Hop] noneTask
-                    | BForky ->
-                        completionFn fary.[int nary.[n].Hop] 
-                            (fun () -> go(p,n + 1) ) // todo: recheck logic !
-                    | x ->
-                        if byte path.[p] = x then
-                            go(p + 1,n + 1)
-                        else
-                            match int nary.[n].Hop - n with
-                            | 1 -> 
-                                noneTask ()
-                            | hop ->
-                                go(p,hop)
-                else noneTask ()                                
-
-            if p < path.Length then
-                // matching function begin
+    let processPath(path:string,ctx) =
+        // Parsing recursive funciton with more state for parsing
+        let rec parsing (p,n,retry,fp,state:ParseState) : Task<HttpContext option> =                
+        
+            // Parse function begin
+            if p < path.Length then 
                 match nary.[n].Char with
                 | BParsy ->
                     match fary.[int nary.[n].Hop] with
-                    | ParseStart (i,prs,fp) ->
-                        let ps = ParseState(i)
-                        ps.Parsers.[0] <- prs
-                        ps.PStart.[0] <- p
-                        ps.Retry <- (n + 1)
-                        parsing(p,n + 1,p,fp,ps)
-                    | xfn -> failwith(sprintf "unhandled Parse funciton match case %A" xfn) 
+                    | ParseMid (i,prs,nfp) ->
+                        state.Parsers.[i] <- prs
+                        state.PStart.[i] <- p
+                        state.CurArg <- i
+                        parsing(p,n + 1,p,nfp,state)                        
+                    | xfn -> failwith(sprintf "unhandled parse Continue function match case %A" xfn) 
                 | BEndy  ->
-                    completionFn fary.[int nary.[n].Hop] noneTask
+                    parseEnding(path,ctx,p,state,fary.[int nary.[n].Hop],noneTask)
                 | BForky ->
-                    completionFn fary.[int nary.[n].Hop] 
-                        (fun () -> parsing(retry,n + 1,retry,fp,state) )
+                    parseEnding(path,ctx,p,state,fary.[int nary.[n].Hop], 
+                        (fun () -> parsing(retry,n + 1,retry,n + 1,state) )) // todo: recheck logic !
                 | x ->
                     if byte path.[p] = x then
                         if state.PEnd.[state.CurArg] = 0 then // HACK: need to impliment better logic here to get parse end
@@ -472,64 +438,48 @@ let router (paths: PathNode list) =
                                 parsing(retry,fp,retry,fp,state) /// todo:  revew logic !/!?!?!
                         | hop ->
                             parsing(p,hop,retry,fp,state)
-            else noneTask ()                                    
+            else noneTask ()
 
+        // main routing function
 
-
-
-
-
-                match nary.[n].Instr with
-                | Instr.Next ->
-                    if   nary.[n].Char = (byte path.[p]) 
-                    then go(p+1,n+1)
-                    else noneTask ()
-                | Instr.Retry ->
-                    if   nary.[n].Char = (byte path.[p]) 
-                    then go (p+1,int nary.[n].Hop)
-                    else go (p,n + 1)
-                | Instr.FnEnd ->
-                    endProcess.Invoke(p, n, noneTask)
-
-                | Instr.FnFinish ->
-                    // verify differnce between finish and End as duplicated
+        let rec go(p,n) =
+                
+            // normal go proceedure
+            if p < path.Length then
+                // matching function begin
+                match nary.[n].Char with
+                | BParsy ->
                     match fary.[int nary.[n].Hop] with
-                    | HandleFn f -> f ctx
-                    | ParseApplyEndSingle (prs,fn) ->
-                        match prs.Invoke(path, p, (path.Length - 1)) with
-                        | struct(true,v) -> (v |> fn) ctx
-                        | struct(false,_)-> noneTask ()
-                    | xfn -> failwith(sprintf "unhandled Finish funciton match case %A" xfn)
-                | Instr.FnEndOrNext ->
-                    endProcess.Invoke(p,n,(fun () -> go (p+1,n+1))) // <<<<< p / p + 1 ??
-
-                | Instr.FnContinue ->
-                    match fary.[int nary.[n].Hop] with
-                    | ParseStart (i,prs) ->
+                    | ParseStart (i,prs,fp) ->
                         let ps = ParseState(i)
                         ps.Parsers.[0] <- prs
                         ps.PStart.[0] <- p
                         ps.Retry <- (n + 1)
-                        parsing (p) (n + 1) ps
-                    | xfn -> failwith(sprintf "unhandled Continue funciton match case %A" xfn)
-                | Instr.FnEndOrCont ->
-                    endProcess.Invoke(p, n, (fun () ->
-                        // n = end node
-                        // n + 1 = parse node with '^' (cx)
-                        // n + 2 = matching pattern
-                        match fary.[int nary.[n + 1].Hop] with
-                        | ParseStart (i,prs) -> // HACK Parse Node current has '^' with next node being start of match, tidy later
-                            let ps = ParseState(i)
-                            ps.Retry <- n + 2
-                            ps.Parsers.[0] <- prs
-                            ps.PStart.[0] <- p
-                            parsing (p + 1) (n + 2) ps
-                        | xfn -> failwith(sprintf "unhandled init go Continue function match case %A" xfn)                                    
-                    ))
-                | _ -> noneTask ()
-            else noneTask () 
-        go (0,0)    
-
+                        parsing(p,n + 1,p,fp,ps)
+                    | xfn -> failwith(sprintf "unhandled Parse funciton match case %A" xfn) 
+                | BEndy  ->
+                    goEnding(path,ctx,p,n,noneTask)
+                | BForky ->
+                    goEnding(path,ctx,p,n,(fun () -> go(p,n + 1) ))
+                | x ->
+                    if byte path.[p] = x then
+                        go(p + 1,n + 1)
+                    else
+                        match int nary.[n].Hop - n with
+                        | 1 -> 
+                            noneTask ()
+                        | hop ->
+                            go(p,hop)
+            else noneTask ()
+        
+        go (0,0)                                           
+    
+    //use compiled instruciton & function arrays to process path queries
+    fun (ctx:HttpContext) ->
+        // use adapted functions (FSharpFunc<_,_,_>.Adapt(f)) for runtime (esp rec) funcs with no partial application & multiple args         
+        let path : string = ctx.Request.Path.Value
+        processPath(path,ctx)          
+        
 /// handler functions (only 2 needed thus far, )
 /////////////////////
 
