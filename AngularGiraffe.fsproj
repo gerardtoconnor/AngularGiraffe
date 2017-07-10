@@ -5,7 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="RouterParsers.fs"/>
-    <Compile Include="HttpRouterPerf.fs"/>
+    <Compile Include="HttpRouterPerf2.fs"/>
     <Compile Include="WebApi.fs"/>
     <Compile Include="PreRender.fs"/>
     <Compile Include="Program.fs"/>
