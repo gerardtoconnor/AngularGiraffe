@@ -1,4 +1,4 @@
-module Test.HttpRouterToken
+module Giraffe.HttpRouter
 
 open System.Threading.Tasks
 open Microsoft.AspNetCore.Http
@@ -10,7 +10,7 @@ open Microsoft.FSharp.Reflection
 //open Giraffe.AsyncTask
 open Giraffe.Task
 open Giraffe.HttpHandlers
-open Giraffe.HttpRouter.RouterParsers
+open Giraffe.RouterParsers
 
 // implimenation of (router) Trie Node
 // assumptions: memory and compile time not relevant, all about execution speed, initially testing with Dictionary edges
@@ -254,7 +254,7 @@ let routeTf (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node)=
                 //keep token start (+1 just one %), skip 
                 go (pl + 2) (ts + 1) pcount node
             // formater with valid key
-            else if formatStringMap.ContainsKey fmtChar then
+            else if formatMap.ContainsKey fmtChar then
 
                 if pl + 1 = last then // if finishes in a parse
                     if node.MidFns |> List.exists (function | ApplyMatchAndComplete(c,_,_) -> fmtChar = c | _ -> false )
@@ -295,7 +295,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
             if (nxtChar - 1) = last then //if this pattern match shares node chain as substring of another
                 if node.EndFns.IsEmpty
                 then failure pos //pos, None
-                else success nxtChar node //nxtChar, Some node
+                else success(nxtChar,node) //nxtChar, Some node
             else
                 match node.TryGetValue path.[nxtChar] with
                 | true, cnode ->
@@ -304,7 +304,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
                     // no further nodes, either a static url didnt match or there is a pattern match required            
                     if node.MidFns.IsEmpty
                     then failure pos
-                    else success nxtChar node
+                    else success(nxtChar,node)
         else failure pos
     
     /// (next match chars,pos,match completion node) -> (parse end,pos skip completed node,skip completed node) option
@@ -317,7 +317,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
         | x1 -> //x1 represents position of match close char but rest of chain must be confirmed 
             match checkCompletionPath x1 node with
             | struct(true,x2,cn) -> success(x1 - 1,x2,cn)                 // from where char found to end of node chain complete
-            | false,x2,_ -> getNodeCompletion cs (x1 + 1) node // char foundpart of match, not completion string
+            | struct(false,x2,_) -> getNodeCompletion cs (x1 + 1) node // char foundpart of match, not completion string
 
     let createResult (args:obj list) (argCount:int) (fn:obj -> HttpHandler) =
         let input =  
@@ -357,20 +357,20 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
     let rec processMid (fns:MidCont list) pos args =
         
         let applyMatchAndComplete pos acc ( f,i,fn ) tail =
-            match formatStringMap.[f] path pos last with
-            | true, o -> createResult (o :: acc) i fn
-            | false,_ -> processMid tail pos acc // ??????????????????
+            match formatMap.[f].Invoke(path,pos,last) with
+            | struct(true, o) -> createResult (o :: acc) i fn
+            | struct(false,_) -> processMid tail pos acc // ??????????????????
         
         let rec applyMatch (f:char,ca:char[],n) pos acc tail  =
             match getNodeCompletion ca pos n with
             | struct(true,fpos,npos,cnode) ->
-                match formatStringMap.[f] path pos fpos with
-                | true, o -> 
+                match formatMap.[f].Invoke(path, pos, fpos) with
+                | struct(true, o) -> 
                     if npos - 1 = last then //if have reached end of path through nodes, run HandlerFn
                         processEnd cnode.EndFns npos (o::acc)
                     else
                         processMid cnode.MidFns npos (o::acc)
-                | false,_ -> processMid tail pos acc // keep trying    
+                | struct(false,_) -> processMid tail pos acc // keep trying    
             | struct(false,_,_,_) -> processMid tail pos acc // subsequent match could not complete so fail
         
         match fns with

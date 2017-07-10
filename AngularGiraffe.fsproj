@@ -5,7 +5,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="RouterParsers.fs"/>
-    <Compile Include="HttpRouterPerf2.fs"/>
+    <Compile Include="HttpRouterToken.fs"/>
+    <Compile Include="RouterTesting.fs"/>
     <Compile Include="WebApi.fs"/>
     <Compile Include="PreRender.fs"/>
     <Compile Include="Program.fs"/>
@@ -29,6 +30,7 @@
     <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.4.0-preview1-25305-02"/>
     <PackageReference Include="Newtonsoft.Json" Version="10.0.2"/>
     <PackageReference Include="System.ValueTuple" Version="4.4.0-preview2-25405-01"/>
+    <PackageReference Include="BenchmarkDotNet" Version="0.10.8"/>
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Giraffe,Version=0.1.0-alpha018,Culture=neutral">

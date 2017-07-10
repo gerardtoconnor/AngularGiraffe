@@ -409,15 +409,18 @@ let router (paths: PathNode list) =
     /// completion function helpers 
 
     let goEnding (path:string,ctx,p,n,failFn) =
-            if p = path.Length then
+            
                 match fary.[int nary.[n].Hop] with
-                | HandleFn f -> f ctx
+                | HandleFn f -> 
+                    if p = path.Length 
+                    then f ctx
+                    else failFn ()
                 | ParseApplyEndSingle (prs,fn) ->
                     match prs.Invoke(path,p,path.Length - 1) with
                     | struct(true,v) -> (fn v) ctx
                     | struct(false,_)-> failFn ()
                 | xfn -> failwith(sprintf "unhandled funciton match case %A" xfn)
-            else failFn ()
+            
         
     let parseEnding (path,ctx,p,state,pfn:HandleFn,failFn:unit -> Task<HttpContext option>) =
         match pfn with
@@ -475,7 +478,7 @@ let router (paths: PathNode list) =
                     parseEnding(path,ctx,p,state,fary.[int nary.[n].Hop], 
                         (fun () -> parsing(retry,n + 1,retry,n + 1,state) )) // todo: recheck logic !
                 | x ->
-                    let rec tryPath ip =
+                    let rec tryPath(ip) =
                         if ip < path.Length then 
                             if byte path.[ip] = x then
                                 if state.PEnd.[state.CurArg] = 0 then // HACK: need to impliment better logic here to get parse end
@@ -487,8 +490,8 @@ let router (paths: PathNode list) =
                             if fp = 0 then
                                 noneTask ()
                             else
-                                parsing(p,fp,p,0,Unchecked.defaultof<ParseState>) // HACK
-                    tryPath p
+                                parsing(retry,fp,retry,0,Unchecked.defaultof<ParseState>) // HACK
+                    tryPath (p)
 
         // main routing function
 

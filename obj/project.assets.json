@@ -2,6 +2,38 @@
   "version": 2,
   "targets": {
     ".NETCoreApp,Version=v1.1": {
+      "BenchmarkDotNet/0.10.8": {
+        "type": "package",
+        "dependencies": {
+          "BenchmarkDotNet.Core": "0.10.8",
+          "Microsoft.NETCore.App": "1.1.2"
+        },
+        "compile": {
+          "lib/netcoreapp1.1/BenchmarkDotNet.dll": {}
+        },
+        "runtime": {
+          "lib/netcoreapp1.1/BenchmarkDotNet.dll": {}
+        }
+      },
+      "BenchmarkDotNet.Core/0.10.8": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.DotNet.InternalAbstractions": "1.0.0",
+          "Microsoft.DotNet.PlatformAbstractions": "1.1.1",
+          "Microsoft.NETCore.App": "1.1.2",
+          "Microsoft.Win32.Registry": "4.3.0",
+          "System.Reflection.Emit.Lightweight": "4.3.0",
+          "System.Runtime.Serialization.Primitives": "4.3.0",
+          "System.ValueTuple": "4.3.0",
+          "System.Xml.XPath.XmlDocument": "4.3.0"
+        },
+        "compile": {
+          "lib/netcoreapp1.1/BenchmarkDotNet.Core.dll": {}
+        },
+        "runtime": {
+          "lib/netcoreapp1.1/BenchmarkDotNet.Core.dll": {}
+        }
+      },
       "FSharp.Compiler.Tools/4.1.17": {
         "type": "package",
         "build": {
@@ -1017,7 +1049,26 @@
           }
         }
       },
-      "Microsoft.DotNet.PlatformAbstractions/1.1.0": {
+      "Microsoft.DotNet.InternalAbstractions/1.0.0": {
+        "type": "package",
+        "dependencies": {
+          "System.AppContext": "4.1.0",
+          "System.Collections": "4.0.11",
+          "System.IO": "4.1.0",
+          "System.IO.FileSystem": "4.0.1",
+          "System.Reflection.TypeExtensions": "4.1.0",
+          "System.Runtime.Extensions": "4.1.0",
+          "System.Runtime.InteropServices": "4.1.0",
+          "System.Runtime.InteropServices.RuntimeInformation": "4.0.0"
+        },
+        "compile": {
+          "lib/netstandard1.3/Microsoft.DotNet.InternalAbstractions.dll": {}
+        },
+        "runtime": {
+          "lib/netstandard1.3/Microsoft.DotNet.InternalAbstractions.dll": {}
+        }
+      },
+      "Microsoft.DotNet.PlatformAbstractions/1.1.1": {
         "type": "package",
         "dependencies": {
           "System.AppContext": "4.1.0",
@@ -2865,7 +2916,7 @@
           "System.Runtime": "4.3.0"
         },
         "compile": {
-          "ref/netstandard1.0/_._": {}
+          "ref/netstandard1.0/System.Reflection.Emit.ILGeneration.dll": {}
         },
         "runtime": {
           "lib/netstandard1.3/System.Reflection.Emit.ILGeneration.dll": {}
@@ -2880,7 +2931,7 @@
           "System.Runtime": "4.3.0"
         },
         "compile": {
-          "ref/netstandard1.0/_._": {}
+          "ref/netstandard1.0/System.Reflection.Emit.Lightweight.dll": {}
         },
         "runtime": {
           "lib/netstandard1.3/System.Reflection.Emit.Lightweight.dll": {}
@@ -3703,21 +3754,21 @@
           "lib/netstandard1.3/System.Xml.XmlDocument.dll": {}
         }
       },
-      "System.Xml.XPath/4.0.1": {
+      "System.Xml.XPath/4.3.0": {
         "type": "package",
         "dependencies": {
-          "System.Collections": "4.0.11",
-          "System.Diagnostics.Debug": "4.0.11",
-          "System.Globalization": "4.0.11",
-          "System.IO": "4.1.0",
-          "System.Resources.ResourceManager": "4.0.1",
-          "System.Runtime": "4.1.0",
-          "System.Runtime.Extensions": "4.1.0",
-          "System.Threading": "4.0.11",
-          "System.Xml.ReaderWriter": "4.0.11"
+          "System.Collections": "4.3.0",
+          "System.Diagnostics.Debug": "4.3.0",
+          "System.Globalization": "4.3.0",
+          "System.IO": "4.3.0",
+          "System.Resources.ResourceManager": "4.3.0",
+          "System.Runtime": "4.3.0",
+          "System.Runtime.Extensions": "4.3.0",
+          "System.Threading": "4.3.0",
+          "System.Xml.ReaderWriter": "4.3.0"
         },
         "compile": {
-          "ref/netstandard1.3/_._": {}
+          "ref/netstandard1.3/System.Xml.XPath.dll": {}
         },
         "runtime": {
           "lib/netstandard1.3/System.Xml.XPath.dll": {}
@@ -3742,10 +3793,57 @@
         "runtime": {
           "lib/netstandard1.3/System.Xml.XPath.XDocument.dll": {}
         }
+      },
+      "System.Xml.XPath.XmlDocument/4.3.0": {
+        "type": "package",
+        "dependencies": {
+          "System.Collections": "4.3.0",
+          "System.Globalization": "4.3.0",
+          "System.IO": "4.3.0",
+          "System.Resources.ResourceManager": "4.3.0",
+          "System.Runtime": "4.3.0",
+          "System.Runtime.Extensions": "4.3.0",
+          "System.Threading": "4.3.0",
+          "System.Xml.ReaderWriter": "4.3.0",
+          "System.Xml.XPath": "4.3.0",
+          "System.Xml.XmlDocument": "4.3.0"
+        },
+        "compile": {
+          "ref/netstandard1.3/System.Xml.XPath.XmlDocument.dll": {}
+        },
+        "runtime": {
+          "lib/netstandard1.3/System.Xml.XPath.XmlDocument.dll": {}
+        }
       }
     }
   },
   "libraries": {
+    "BenchmarkDotNet/0.10.8": {
+      "sha512": "wPMVSUeC9wdd9F90Wqsf9Qzi1dJexMXOuY/xfs87Ktkc2zfu0VzQU5IG6Z+Sv+ZaF8LKtBseFJWH23Y+YrggcQ==",
+      "type": "package",
+      "path": "benchmarkdotnet/0.10.8",
+      "files": [
+        "benchmarkdotnet.0.10.8.nupkg.sha512",
+        "benchmarkdotnet.nuspec",
+        "lib/net46/BenchmarkDotNet.dll",
+        "lib/net46/BenchmarkDotNet.xml",
+        "lib/netcoreapp1.1/BenchmarkDotNet.dll",
+        "lib/netcoreapp1.1/BenchmarkDotNet.xml"
+      ]
+    },
+    "BenchmarkDotNet.Core/0.10.8": {
+      "sha512": "u/9dU9UL70XdzxU/VIayQ3tUq2IOHhj0KTRaJ2KkRjIibpXjBLILOTlf/mpNZTZVgG1j4bROEV4gcTNb7TpZHA==",
+      "type": "package",
+      "path": "benchmarkdotnet.core/0.10.8",
+      "files": [
+        "benchmarkdotnet.core.0.10.8.nupkg.sha512",
+        "benchmarkdotnet.core.nuspec",
+        "lib/net46/BenchmarkDotNet.Core.dll",
+        "lib/net46/BenchmarkDotNet.Core.xml",
+        "lib/netcoreapp1.1/BenchmarkDotNet.Core.dll",
+        "lib/netcoreapp1.1/BenchmarkDotNet.Core.xml"
+      ]
+    },
     "FSharp.Compiler.Tools/4.1.17": {
       "sha512": "8yO223iFHjM8uFEg5w8mwIctn5YFXWCnJYol3P/KYJibPDLoysIUNdHSZBmpjY8nm2L5jBM7Isns918XYUi36w==",
       "type": "package",
@@ -4626,14 +4724,25 @@
         "runtimes/win8-arm/native/Microsoft.DiaSymReader.Native.arm.dll"
       ]
     },
-    "Microsoft.DotNet.PlatformAbstractions/1.1.0": {
-      "sha512": "6raxcBzD40chc3CyVB2lpPm/DVxRclPqlTOSeBpCKfystz6aA+xnXSJ4KP2820UA0B4/l0Mm2+bk2C3WvAAZPg==",
+    "Microsoft.DotNet.InternalAbstractions/1.0.0": {
+      "sha512": "Hr5DL3R3LVQub8m2FdYGp+wgX7dOGIWvgmSlkubZM/ew8UsXxLwkUyG1Newjh3g+EuEKhUY7IjUV1qg3UJvP/w==",
       "type": "package",
-      "path": "microsoft.dotnet.platformabstractions/1.1.0",
+      "path": "microsoft.dotnet.internalabstractions/1.0.0",
+      "files": [
+        "lib/net451/Microsoft.DotNet.InternalAbstractions.dll",
+        "lib/netstandard1.3/Microsoft.DotNet.InternalAbstractions.dll",
+        "microsoft.dotnet.internalabstractions.1.0.0.nupkg.sha512",
+        "microsoft.dotnet.internalabstractions.nuspec"
+      ]
+    },
+    "Microsoft.DotNet.PlatformAbstractions/1.1.1": {
+      "sha512": "m+IIxUg8Ev+g34H7CIcuILm3ZWWJNclsgYqc/j5n/QCKhcvRAeAn0byDI7zCqlDUwn6byXYrJxuZpuZh/5C/6g==",
+      "type": "package",
+      "path": "microsoft.dotnet.platformabstractions/1.1.1",
       "files": [
         "lib/net451/Microsoft.DotNet.PlatformAbstractions.dll",
         "lib/netstandard1.3/Microsoft.DotNet.PlatformAbstractions.dll",
-        "microsoft.dotnet.platformabstractions.1.1.0.nupkg.sha512",
+        "microsoft.dotnet.platformabstractions.1.1.1.nupkg.sha512",
         "microsoft.dotnet.platformabstractions.nuspec"
       ]
     },
@@ -10097,10 +10206,10 @@
         "system.xml.xmldocument.nuspec"
       ]
     },
-    "System.Xml.XPath/4.0.1": {
-      "sha512": "3Fk9xIRZLkgtik1BmEdFTCboqIbssLqOl0osrIkLZ79ebMaKnGTu5HWmrEOfSYC7J/ZYXeb83giTjwqMdYLHrw==",
+    "System.Xml.XPath/4.3.0": {
+      "sha512": "5M+S4lSnCkxksMdjyZ56Ev7lrhPX+kdfoskOGUvelGX1RK4fxTT2rBuFPJlY1vA+5JX4Jn8FXL/OT0IHfKguwQ==",
       "type": "package",
-      "path": "system.xml.xpath/4.0.1",
+      "path": "system.xml.xpath/4.3.0",
       "files": [
         "ThirdPartyNotices.txt",
         "dotnet_library_license.txt",
@@ -10130,7 +10239,7 @@
         "ref/xamarinmac20/_._",
         "ref/xamarintvos10/_._",
         "ref/xamarinwatchos10/_._",
-        "system.xml.xpath.4.0.1.nupkg.sha512",
+        "system.xml.xpath.4.3.0.nupkg.sha512",
         "system.xml.xpath.nuspec"
       ]
     },
@@ -10170,10 +10279,47 @@
         "system.xml.xpath.xdocument.4.0.1.nupkg.sha512",
         "system.xml.xpath.xdocument.nuspec"
       ]
+    },
+    "System.Xml.XPath.XmlDocument/4.3.0": {
+      "sha512": "A/uxsWi/Ifzkmd4ArTLISMbfFs6XpRPsXZonrIqyTY70xi8t+mDtvSM5Os0RqyRDobjMBwIDHDL4NOIbkDwf7A==",
+      "type": "package",
+      "path": "system.xml.xpath.xmldocument/4.3.0",
+      "files": [
+        "ThirdPartyNotices.txt",
+        "dotnet_library_license.txt",
+        "lib/MonoAndroid10/_._",
+        "lib/MonoTouch10/_._",
+        "lib/net46/System.Xml.XPath.XmlDocument.dll",
+        "lib/netstandard1.3/System.Xml.XPath.XmlDocument.dll",
+        "lib/xamarinios10/_._",
+        "lib/xamarinmac20/_._",
+        "lib/xamarintvos10/_._",
+        "lib/xamarinwatchos10/_._",
+        "ref/MonoAndroid10/_._",
+        "ref/MonoTouch10/_._",
+        "ref/netstandard1.3/System.Xml.XPath.XmlDocument.dll",
+        "ref/netstandard1.3/System.Xml.XPath.XmlDocument.xml",
+        "ref/netstandard1.3/de/System.Xml.XPath.XmlDocument.xml",
+        "ref/netstandard1.3/es/System.Xml.XPath.XmlDocument.xml",
+        "ref/netstandard1.3/fr/System.Xml.XPath.XmlDocument.xml",
+        "ref/netstandard1.3/it/System.Xml.XPath.XmlDocument.xml",
+        "ref/netstandard1.3/ja/System.Xml.XPath.XmlDocument.xml",
+        "ref/netstandard1.3/ko/System.Xml.XPath.XmlDocument.xml",
+        "ref/netstandard1.3/ru/System.Xml.XPath.XmlDocument.xml",
+        "ref/netstandard1.3/zh-hans/System.Xml.XPath.XmlDocument.xml",
+        "ref/netstandard1.3/zh-hant/System.Xml.XPath.XmlDocument.xml",
+        "ref/xamarinios10/_._",
+        "ref/xamarinmac20/_._",
+        "ref/xamarintvos10/_._",
+        "ref/xamarinwatchos10/_._",
+        "system.xml.xpath.xmldocument.4.3.0.nupkg.sha512",
+        "system.xml.xpath.xmldocument.nuspec"
+      ]
     }
   },
   "projectFileDependencyGroups": {
     ".NETCoreApp,Version=v1.1": [
+      "BenchmarkDotNet >= 0.10.8",
       "FSharp.Core >= 4.1.*",
       "FSharp.NET.Sdk >= 1.0.*",
       "Microsoft.AspNetCore >= 1.1.2",
@@ -10289,6 +10435,10 @@
           "System.ValueTuple": {
             "target": "Package",
             "version": "4.4.0-preview2-25405-01"
+          },
+          "BenchmarkDotNet": {
+            "target": "Package",
+            "version": "0.10.8"
           }
         }
       }
