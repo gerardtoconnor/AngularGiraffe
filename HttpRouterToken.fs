@@ -1,4 +1,4 @@
-module Giraffe.HttpRouter
+module Giraffe.HttpTokenRouter
 
 open System.Threading.Tasks
 open Microsoft.AspNetCore.Http

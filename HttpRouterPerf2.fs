@@ -1,4 +1,4 @@
-module Giraffe.HttpRouter
+module Giraffe.HttpRouteArray
 
 open System
 open OptimizedClosures 
