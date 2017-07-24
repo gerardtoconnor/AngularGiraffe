@@ -19,17 +19,22 @@ open Giraffe.Common
 open Giraffe.Task
 //open Giraffe.AsyncTask
 
-// let webApp = 
-//     routeTrie [
-//         subRouteT "/api" ==> WebApi.trieApi
-//         routeT "/plainroute" ==> text "plain route hit"
-//         routeTf "/dist/%s" (fun path -> text path )
-//         routeT "/__webpack_hmr" ==> (fun ctx -> Some ctx |> ValueTask )
-//         routeT "/" ==> PreRender.renderIndex
-//         routeTf "/multiRoute/%s" text 
-//         routeTf "/v/%s" (fun s -> PreRender.renderRoute s)
-//         //setStatusCode 404 >=> text "Not Found xxx" 
-//     ]
+let webApp = 
+    routeTrie [
+        subRouteT "/api" ==> WebApi.trieApi
+        routeT "/plainroute" ==> text "plain route hit"
+        routeTf "/dist/%s" 
+            (fun path ctx -> task {
+                do! ctx.Response.WriteAsync  
+                    text path
+        }
+             )
+        routeT "/__webpack_hmr" ==> (fun ctx -> Some ctx |> ValueTask )
+        routeT "/" ==> PreRender.renderIndex
+        routeTf "/multiRoute/%s" text 
+        routeTf "/v/%s" (fun s -> PreRender.renderRoute s)
+        //setStatusCode 404 >=> text "Not Found xxx" 
+    ]
 
 
 // ---------------------------------
@@ -47,14 +52,14 @@ let errorHandler (ex : Exception) (logger : ILogger) : HttpHandler =
 // ---------------------------------
 
 let configureApp (app : IApplicationBuilder) = 
-    app.UseStaticFiles( 
-        //     StaticFileOptions(
-        //         FileProvider = 
-        //             new PhysicalFileProvider(
-        //                     Path.Combine(Directory.GetCurrentDirectory(), @"dist")),
-        //         RequestPath = PathString("/dist")
-        // )
-        ) |> ignore
+    // app.UseStaticFiles( 
+    //     //     StaticFileOptions(
+    //     //         FileProvider = 
+    //     //             new PhysicalFileProvider(
+    //     //                     Path.Combine(Directory.GetCurrentDirectory(), @"dist")),
+    //     //         RequestPath = PathString("/dist")
+    //     // )
+    //     ) |> ignore
     app.UseGiraffeErrorHandler errorHandler
     app.UseGiraffe WebApi.webApi
     app.UseWebpackDevMiddleware(WebpackDevMiddlewareOptions(HotModuleReplacement = true))
