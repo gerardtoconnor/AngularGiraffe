@@ -13,7 +13,6 @@ open Giraffe.Tasks
 //open Giraffe.AsyncTask
 open Giraffe.HttpHandlers
 open Giraffe.Common
-open WebApi
 
 let private moduleExport = JavaScriptModuleExport("./ClientApp/dist/main-server")
 let private writeLayoutRender (res:HttpResponse) (file:string) (tag:string) (data:string) (trender:Task<RenderToStringResult>) =
