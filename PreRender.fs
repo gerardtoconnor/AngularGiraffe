@@ -8,7 +8,8 @@ open Microsoft.AspNetCore.NodeServices
 open Microsoft.AspNetCore.SpaServices.Prerendering
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.AspNetCore.Http.Extensions
-open Giraffe.Task
+//open FSharp.Control.Tasks.ContextInsensitive
+open Giraffe.Tasks
 //open Giraffe.AsyncTask
 open Giraffe.HttpHandlers
 open Giraffe.Common
@@ -28,7 +29,7 @@ let private writeLayoutRender (res:HttpResponse) (file:string) (tag:string) (dat
                     return! go true
                 else
                     do! write ( enum.Current.Substring(0,i) )
-                    let! (prerenderedHtml : RenderToStringResult) = trender
+                    let! prerenderedHtml = trender //: RenderToStringResult
                     //do! write <| sprintf "<script>var TRANSFER_CACHE = '%s'</script>" data
                     do! write prerenderedHtml.Html
                     do! write ( enum.Current.Substring(i + tag.Length,enum.Current.Length - i - tag.Length) )
@@ -40,7 +41,7 @@ let private writeLayoutRender (res:HttpResponse) (file:string) (tag:string) (dat
     go true
          
 let private executeResultAsync dataToSupply : HttpHandler =
-    fun ctx ->
+    fun next ctx ->
         let nodeServices = ctx.RequestServices.GetRequiredService<INodeServices>()
         let hostEnv = ctx.RequestServices.GetRequiredService<IHostingEnvironment>()
         let applicationBasePath = hostEnv.ContentRootPath
@@ -67,7 +68,7 @@ let private executeResultAsync dataToSupply : HttpHandler =
         do! writeLayoutRender response (applicationBasePath + "/Views/Home/Index.html") "<app></app>" dataToSupply prerenderedHtml
         //do! response.WriteAsync(prerenderedHtml.Html) |> Async.AwaitTask
 
-        return Some ctx
+        return! next ctx
     }
 
 let renderIndex  : HttpHandler = executeResultAsync "" 

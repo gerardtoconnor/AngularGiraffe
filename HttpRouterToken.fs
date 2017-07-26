@@ -8,7 +8,7 @@ open FSharp.Core.Printf
 open System.Collections.Generic
 open Microsoft.FSharp.Reflection
 //open Giraffe.AsyncTask
-open Giraffe.Task
+//open Giraffe.Task
 open Giraffe.HttpHandlers
 open Giraffe.RouterParsers
 
@@ -279,7 +279,7 @@ let routeTf (path : StringFormat<_,'T>) (fn:'T -> HttpHandler) (root:Node)=
 
 // process path fn that returns httpHandler
 let private processPath (rs:RouteState) (root:Node) : HttpHandler =
-    fun (ctx:HttpContext) -> //(succ:Continuation) (fail:Continuation)
+    fun next ctx -> //(succ:Continuation) (fail:Continuation)
     
     let path : string = rs.path
     let ipos = rs.pos
@@ -309,7 +309,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
     
     /// (next match chars,pos,match completion node) -> (parse end,pos skip completed node,skip completed node) option
     let rec getNodeCompletion (cs:char []) pos (node:Node) =
-        let success(prend,nxtpos,nxtnode) = struct (true,prend,nxtpos,nxtnode)
+        let inline success(prend,nxtpos,nxtnode) = struct (true,prend,nxtpos,nxtnode)
         let failure                       = struct (false,0,0,Unchecked.defaultof<Node>)
 
         match path.IndexOfAny(cs,pos) with // jump to next char ending (possible instr optimize vs node +1 crawl) 
@@ -340,7 +340,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
                 
                 let tupleType = FSharpType.MakeTupleType valuesTypes
                 FSharpValue.MakeTuple(values, tupleType)
-        fn input ctx
+        fn input next ctx
 
     let saveRouteState pos = 
         rs.pos <- pos
@@ -351,7 +351,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
         | [] -> Task.FromResult None
         | h :: t ->
             match h with                    
-            | HandlerMap fn -> fn ctx // run function with all parameters
+            | HandlerMap fn -> fn next ctx // run function with all parameters
             | MatchComplete (i,fn) -> createResult args i fn 
 
     let rec processMid (fns:MidCont list) pos args =
@@ -381,7 +381,7 @@ let private processPath (rs:RouteState) (root:Node) : HttpHandler =
             | ApplyMatchAndComplete x -> applyMatchAndComplete pos args x t
             | SubRouteMap (fn) ->
                 saveRouteState pos
-                fn ctx
+                fn next ctx
 
     let rec crawl (pos:int) (node:Node) =
         let cp = commonPathIndex path pos node.Token 
@@ -416,11 +416,11 @@ let routeTrie (fns:(Node->Node) list) : HttpHandler =
             go t
     go fns
 
-    fun ctx ->
+    fun next ctx ->
         //get path progress (if any so far)
         let routeState =
             match ctx.Items.TryGetValue routerKey with
             | true, (v:obj) -> v :?> RouteState  
             | false,_-> RouteState(ctx.Request.Path.Value)
-        processPath routeState root ctx
+        processPath routeState root next ctx
 

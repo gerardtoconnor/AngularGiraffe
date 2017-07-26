@@ -6,7 +6,7 @@
   <ItemGroup>
     <Compile Include="RouterParsers.fs"/>
     <Compile Include="HttpRouterToken.fs"/>
-    <Compile Include="RouterTesting.fs"/>
+    <!-- <Compile Include="RouterTesting.fs"/> -->
     <Compile Include="WebApi.fs"/>
     <Compile Include="PreRender.fs"/>
     <Compile Include="Program.fs"/>

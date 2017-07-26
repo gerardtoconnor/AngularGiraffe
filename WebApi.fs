@@ -8,18 +8,19 @@ open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Hosting
 open Microsoft.AspNetCore.Http
 open Giraffe.HttpHandlers
-open Giraffe.HttpRouter
+open Giraffe.HttpTokenRouter
 open Giraffe.Middleware
 open Giraffe.Common
-open Giraffe.Task
+//open FSharp.Control.Tasks.ContextInsensitive
+open Giraffe.Tasks
 //open Giraffe.AsyncTask
 
 
 let AuthTestHandler : HttpHandler =
-    fun ctx -> task {
-        let! (prin:Security.Claims.ClaimsPrincipal) = ctx.Authentication.AuthenticateAsync("Test")
+    fun next ctx -> task {
+        let! (prin) = ctx.Authentication.AuthenticateAsync("Test") //:Security.Claims.ClaimsPrincipal
         if prin.Identity.Name = "Gerry" then
-            return Some ctx
+            return! next ctx
         else
             return None
     }
