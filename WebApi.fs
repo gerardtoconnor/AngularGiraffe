@@ -91,10 +91,15 @@ let weatherForecasts () =
 //             ]   
 
 let webApi : HttpHandler =
-    GET >=> router [    //<<FAIL 0 instead of 404!?
-        route "/"    => text "Hello World"
-        route "/foo" => text "bar"
-        ]
+    GET >=> router [
+                route "/"    => text "Hello World"
+                route "/foo" => text "bar"
+                subRoute "/api" (
+                    router [
+                        route  "" => text "api root"
+                        routef "/foo/bar/%s" text ] )   //<<FAIL (Not found)
+                route "/api/test" => text "test"
+            ]
 let webApix : HttpHandler =
      GET >=>
             router [
