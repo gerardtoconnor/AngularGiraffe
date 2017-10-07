@@ -17,22 +17,18 @@ open Giraffe.HttpHandlers
 open Giraffe.Middleware
 open Giraffe.Common
 open Giraffe.Tasks
+open Giraffe.TokenRouter
 //open Giraffe.AsyncTask
 
-let webApp = 
-    routeTrie [
-        subRouteT "/api" ==> WebApi.trieApi
-        routeT "/plainroute" ==> text "plain route hit"
-        routeTf "/dist/%s" 
-            (fun path ctx -> task {
-                do! ctx.Response.WriteAsync  
-                    text path
-        }
-             )
-        routeT "/__webpack_hmr" ==> (fun ctx -> Some ctx |> ValueTask )
-        routeT "/" ==> PreRender.renderIndex
-        routeTf "/multiRoute/%s" text 
-        routeTf "/v/%s" (fun s -> PreRender.renderRoute s)
+let webApp : HttpHandler = 
+    router [
+        subRoute "/api" => WebApi.webApi
+        route "/plainroute" => text "plain route hit"
+        routef "/dist/%s" <| fun path next ctx -> next ctx
+        route "/__webpack_hmr" <| fun next ctx -> next ctx
+        route "/" => PreRender.renderIndex
+        routef "/multiRoute/%s" text 
+        routef "/v/%s" (fun s -> PreRender.renderRoute s)
         //setStatusCode 404 >=> text "Not Found xxx" 
     ]
 
@@ -82,7 +78,7 @@ let main argv =
         .UseContentRoot(Directory.GetCurrentDirectory())
         .Configure(Action<IApplicationBuilder> configureApp)
         .ConfigureServices(Action<IServiceCollection> configureServices)
-        .ConfigureLogging(Action<ILoggerFactory> configureLogging)
+        //.ConfigureLogging(Action<ILoggerFactory> configureLogging)
         .Build()
         .Run()
     0

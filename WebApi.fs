@@ -8,9 +8,9 @@ open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Hosting
 open Microsoft.AspNetCore.Http
 open Giraffe.HttpHandlers
-open Giraffe.HttpTokenRouter
 open Giraffe.Middleware
 open Giraffe.Common
+open Giraffe.TokenRouter
 //open FSharp.Control.Tasks.ContextInsensitive
 open Giraffe.Tasks
 //open Giraffe.AsyncTask
@@ -71,21 +71,21 @@ let weatherForecasts () =
 //      GET >=>
 //             router [
 //                 routef "/name%sssn%i" (fun (n,s) -> sprintf "your name is [%s] with social security number [%i]" n s |> text)                 
-//                 route "/" >=> text "Hello world, from Giraffe!"
-//                 route "/test" >=> text "Giraffe testing working"
-//                 route "/deep" >=> [
-//                         route "/hasktag" >=> text "hashtag deep"
-//                         route "/solo" >=> text "han Solo"
+//                 route "/" => text "Hello world, from Giraffe!"
+//                 route "/test" => text "Giraffe testing working"
+//                 route "/deep" => router [
+//                         route "/hasktag" => text "hashtag deep"
+//                         route "/solo" => text "han Solo"
 //                         routef "/map/%s" text
 //                         routef "/rev/%s/end" (sprintf "string path hit:%s" >> text)
 //                         routef "/rev/%i/end" (fun v1 -> sprintf "integer path hit:%i" v1 |>  text )
 //                         routef "/rev/%s/end/%s" (fun (v1,v2) -> sprintf "double whammy baby, [%s] as well as [%s]" v1 v2 |> text)                      
 //                 ]
-//                 route "/auth" >=> choose [
+//                 route "/auth" => choose [
 //                                         AuthTestHandler >=> text "your Authorised" 
 //                                         setStatusCode 404 >=> text "Not Found"
 //                                     ]                                  
-//                 route "/SampleData/WeatherForecasts" >=> json (weatherForecasts ())
+//                 route "/SampleData/WeatherForecasts" => json (weatherForecasts ())
 //                 routef "/value/%s/cats/%s/end" (fun (v1,v2) -> sprintf "we recieved in [%s] and [%s]" v1 v2 |> text)
 //                 //routef "/value/%s" (fun (v) -> text (v:?> sring))        
 //             ]   
@@ -93,25 +93,25 @@ let weatherForecasts () =
 
 let webApi : HttpHandler =
      GET >=>
-            routeTrie [
-                routeTf "/name%sssn%i" (fun (n,s) -> sprintf "your name is [%s] with social security number [%i]" n s |> text)                 
-                routeT "/" <| text "Hello world, from Giraffe!"
-                routeT "/test" <| text "Giraffe testing working"
-                subRouteT "/deep" ==> 
-                    routeTrie [
-                        routeT "/hasktag" ==> text "hashtag deep"
-                        routeT "/solo" ==> text "han Solo"
-                        routeTf "/map/%s" text
-                        routeTf "/rev/%s/end" (sprintf "string path hit:%s" >> text)
-                        routeTf "/rev/%i/end" (fun v1 -> sprintf "integer path hit:%i" v1 |>  text )
-                        routeTf "/rev/%s/end/%s" (fun (v1,v2) -> sprintf "double whammy baby, [%s] as well as [%s]" v1 v2 |> text)                      
+            router [
+                routef "/name%sssn%i" (fun (n,s) -> sprintf "your name is [%s] with social security number [%i]" n s |> text)                 
+                route "/" <| text "Hello world, from Giraffe!"
+                route "/test" <| text "Giraffe testing working"
+                subRoute "/deep" => 
+                    router [
+                        route "/hasktag" => text "hashtag deep"
+                        route "/solo" => text "han Solo"
+                        routef "/map/%s" text
+                        routef "/rev/%s/end" (sprintf "string path hit:%s" >> text)
+                        routef "/rev/%i/end" (fun v1 -> sprintf "integer path hit:%i" v1 |>  text )
+                        routef "/rev/%s/end/%s" (fun (v1,v2) -> sprintf "double whammy baby, [%s] as well as [%s]" v1 v2 |> text)                      
                 ]
-                routeT "/auth" ==> choose [
+                route "/auth" => choose [
                                         AuthTestHandler >=> text "your Authorised" 
                                         setStatusCode 404 >=> text "Not Found"
                                     ]                                  
-                routeT "/SampleData/WeatherForecasts" <| json (weatherForecasts ())
-                routeTf "/value/%s/cats/%s/end" (fun (v1,v2) -> sprintf "we recieved in [%s] and [%s]" v1 v2 |> text)
+                route "/SampleData/WeatherForecasts" <| json (weatherForecasts ())
+                routef "/value/%s/cats/%s/end" (fun (v1,v2) -> sprintf "we recieved in [%s] and [%s]" v1 v2 |> text)
                 //routef "/value/%s" (fun (v) -> text (v:?> sring))        
             ]
 
