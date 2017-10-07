@@ -20,17 +20,17 @@ open Giraffe.Tasks
 open Giraffe.TokenRouter
 //open Giraffe.AsyncTask
 
-let webApp : HttpHandler = 
-    router [
-        subRoute "/api" => WebApi.webApi
-        route "/plainroute" => text "plain route hit"
-        routef "/dist/%s" <| fun path next ctx -> next ctx
-        route "/__webpack_hmr" <| fun next ctx -> next ctx
-        route "/" => PreRender.renderIndex
-        routef "/multiRoute/%s" text 
-        routef "/v/%s" (fun s -> PreRender.renderRoute s)
-        //setStatusCode 404 >=> text "Not Found xxx" 
-    ]
+// let webApp : HttpHandler = 
+//     router [
+//         subRoute "/api" => WebApi.webApi
+//         route "/plainroute" => text "plain route hit"
+//         routef "/dist/%s" <| fun path next ctx -> next ctx
+//         route "/__webpack_hmr" <| fun next ctx -> next ctx
+//         route "/" => PreRender.renderIndex
+//         routef "/multiRoute/%s" text 
+//         routef "/v/%s" (fun s -> PreRender.renderRoute s)
+//         //setStatusCode 404 >=> text "Not Found xxx" 
+//     ]
 
 
 // ---------------------------------

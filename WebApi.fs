@@ -90,8 +90,12 @@ let weatherForecasts () =
 //                 //routef "/value/%s" (fun (v) -> text (v:?> sring))        
 //             ]   
 
-
 let webApi : HttpHandler =
+    GET >=> router [    //<<FAIL 0 instead of 404!?
+        route "/"    => text "Hello World"
+        route "/foo" => text "bar"
+        ]
+let webApix : HttpHandler =
      GET >=>
             router [
                 routef "/name%sssn%i" (fun (n,s) -> sprintf "your name is [%s] with social security number [%i]" n s |> text)                 
